@@ -3,7 +3,6 @@ import prisma from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
 
-
 const createFolderSchema = z.object({
     name: z.string().min(1, "Folder name cannot be empty").max(255),
     parentId: z.string().uuid("Invalid parent folder ID").optional().nullable(),
@@ -57,7 +56,7 @@ export async function POST(request: NextRequest) {
     }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
     try {
         // Validate session
         const session = await auth();
@@ -67,9 +66,23 @@ export async function GET() {
 
         const userId = session.user.id;
 
-        // Return all folders for the user, with children and file counts
+        // Support navigation by filtering by parentId and search
+        const { searchParams } = new URL(request.url);
+        const parentId = searchParams.get("parentId");
+        const parent_id = parentId === "null" || !parentId ? null : parentId;
+        const search = searchParams.get("search");
+
+        // Return folders for the user based on the specified parent_id or search query
+        const whereClause: any = { userId };
+
+        if (search) {
+            whereClause.name = { contains: search, mode: "insensitive" };
+        } else {
+            whereClause.parent_id = parent_id;
+        }
+
         const folders = await prisma.folder.findMany({
-            where: { userId },
+            where: whereClause,
             orderBy: { created_at: "desc" },
             include: {
                 _count: { select: { children: true, files: true } },

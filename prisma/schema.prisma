@@ -49,9 +49,10 @@ model folder {
   parent    folder?  @relation("FolderHierarchy", fields: [parent_id], references: [id])
   children  folder[] @relation("FolderHierarchy")
 
-  userId String
-  user   user   @relation(fields: [userId], references: [id])
-  files  file[]
+  userId   String
+  user     user      @relation(fields: [userId], references: [id])
+  files    file[]
+  storages storage[] @relation("FolderStorage")
 
   created_at DateTime @default(now())
   updated_at DateTime @default(now())
@@ -67,6 +68,7 @@ model storage {
   processed_url String?
   file_name     String
   user_id       String?
+  folder_id     String?
   file_size     Int
   mime_type     String
   created_at    DateTime      @default(now())
@@ -74,6 +76,7 @@ model storage {
   chunks        chunk[]
   shared_files  shared_file[]
   user          user?         @relation(fields: [user_id], references: [id])
+  folder        folder?       @relation("FolderStorage", fields: [folder_id], references: [id])
 }
 
 /// Represents a publicly-accessible shareable link for a storage record.

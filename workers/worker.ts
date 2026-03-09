@@ -3,17 +3,14 @@ import { minioClient } from "@/lib/minio";
 import prisma from "@/lib/prisma";
 import { redis } from "@/lib/redis";
 
-const PROCESSED_BUCKET = "processed-images";
-
 async function processImage() {
-    const processedExists = await minioClient.bucketExists(PROCESSED_BUCKET);
-    if (!processedExists) await minioClient.makeBucket(PROCESSED_BUCKET);
+
 
     while (true) {
         let jobId: string | undefined;
         try {
-            // brpop returns [key, value] | null
-            const result = await redis.brpop('image-processing-queue', 0);
+            // Match the queue name pushed to by POST /api/storage
+            const result = await redis.brpop('processing_queue', 0);
             if (!result) continue;
 
             jobId = result[1];
@@ -31,7 +28,8 @@ async function processImage() {
             }
 
             const fileName = record.file_name;
-            const bucket = process.env.MINIO_BUCKET_NAME!;
+            let bucket = process.env.MINIO_IMAGE_BUCKET ?? "images";
+            bucket = bucket.replace(/_/g, "-").toLowerCase();
 
             const object = await minioClient.getObject(bucket, fileName);
             const chunks: Buffer[] = [];

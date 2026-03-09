@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
 
         // Build the public share URL
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-        const shareUrl = `${baseUrl}/api/share/${token}`;
+        const shareUrl = `${baseUrl}/share/${token}`;
 
         return NextResponse.json(
             {

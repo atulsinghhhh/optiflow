@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
 
         const formData = await request.formData();
         const file = formData.get("file") as File;
+        const folderId = formData.get("folderId") as string | null;
 
         if (!file) {
             return NextResponse.json(
@@ -66,9 +67,12 @@ export async function POST(request: NextRequest) {
         const fileName = `${uuidv4()}-${file.name}`;
 
         // Choose bucket based on upload type: "images" for images, "files" for generic files
-        const bucket = type === "image"
+        let bucket = type === "image"
             ? (process.env.MINIO_IMAGE_BUCKET ?? "images")
             : (process.env.MINIO_FILE_BUCKET ?? "files");
+
+        // MinIO / S3 bucket names cannot contain underscores or uppercase letters
+        bucket = bucket.replace(/_/g, "-").toLowerCase();
 
         // Ensure the bucket exists
         const exists = await minioClient.bucketExists(bucket);
@@ -86,7 +90,7 @@ export async function POST(request: NextRequest) {
         // Build the public URL for the stored object
         const originalUrl = `${process.env.MINIO_PUBLIC_URL}/${bucket}/${fileName}`;
 
-        // Persist the storage record with file_type
+        // Persist the storage record with file_type and folder association
         const storageFile = await prisma.storage.create({
             data: {
                 file_type: type === "image" ? "IMAGE" : "FILE",
@@ -96,6 +100,7 @@ export async function POST(request: NextRequest) {
                 file_size: file.size,
                 mime_type: file.type,
                 user_id: session.user.id,
+                folder_id: folderId === "null" || !folderId ? null : folderId,
             },
         });
 
@@ -126,17 +131,28 @@ export async function POST(request: NextRequest) {
     - Returns all uploaded files (images + documents) for the authenticated user, ordered by created_at descending.
 */
 
-export async function GET() {
+export async function GET(request: NextRequest) {
     try {
         const session = await auth();
         if (!session?.user?.id) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
+        const { searchParams } = new URL(request.url);
+        const folderId = searchParams.get("folderId");
+        const folder_id = folderId === "null" || !folderId ? null : folderId;
+        const search = searchParams.get("search");
+
+        const whereClause: any = { user_id: session.user.id };
+
+        if (search) {
+            whereClause.file_name = { contains: search, mode: "insensitive" };
+        } else {
+            whereClause.folder_id = folder_id;
+        }
+
         const files = await prisma.storage.findMany({
-            where: {
-                user_id: session.user.id
-            },
+            where: whereClause,
             orderBy: {
                 created_at: "desc",
             },

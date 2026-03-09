@@ -27,9 +27,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         }
 
         // 1. Determine correct bucket (since we split them by type in the POST endpoint)
-        const bucket = storage_file.file_type === "IMAGE"
+        let bucket = storage_file.file_type === "IMAGE"
             ? (process.env.MINIO_IMAGE_BUCKET ?? "images")
             : (process.env.MINIO_FILE_BUCKET ?? "files");
+
+        bucket = bucket.replace(/_/g, "-").toLowerCase();
 
         // 2. Object name is just the file_name, not the full original_url
         const object_name = storage_file.file_name;
