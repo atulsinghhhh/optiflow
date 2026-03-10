@@ -33,12 +33,33 @@ model user {
   email        String        @unique
   username     String?
   name         String?
-  password     String
+  password     String? // nullable — GitHub OAuth users have no password
   folders      folder[]
   shared_files shared_file[]
+  accounts     account[]
   created_at   DateTime      @default(now())
   updated_at   DateTime      @default(now())
   storages     storage[]
+}
+
+/// OAuth / provider account linked to a user (used by NextAuth)
+model account {
+  id                String  @id @default(uuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user user @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
 }
 
 /// User-created folder for organising files, like Dropbox folders
