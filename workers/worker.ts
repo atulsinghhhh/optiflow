@@ -9,7 +9,6 @@ async function processImage() {
     while (true) {
         let jobId: string | undefined;
         try {
-            // Match the queue name pushed to by POST /api/storage
             const result = await redis.brpop('processing_queue', 0);
             if (!result) continue;
 
@@ -44,7 +43,6 @@ async function processImage() {
 
             const buffer = Buffer.concat(chunks);
 
-            // process image using sharp
             const processedBuffer = await sharp(buffer)
                 .resize(800, 600, { fit: "inside" })
                 .toFormat("jpeg")

@@ -31,22 +31,22 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
-  worker:
-    build:
-      context: .
-      dockerfile: dockerfile
-    environment:
-      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/optiflow
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      MINIO_ENDPOINT: storage
-      MINIO_PORT: 9000
-      MINIO_ACCESS_KEY: optiflow
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
-    depends_on:
-      - db
-      - storage
-      - redis
+  # worker:
+  #   build:
+  #     context: .
+  #     dockerfile: dockerfile
+  #   environment:
+  #     DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/optiflow
+  #     REDIS_HOST: redis
+  #     REDIS_PORT: 6379
+  #     MINIO_ENDPOINT: storage
+  #     MINIO_PORT: 9000
+  #     MINIO_ACCESS_KEY: optiflow
+  #     MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+  #   depends_on:
+  #     - db
+  #     - storage
+  #     - redis
 volumes:
   postgres_data:
   minio_data:
