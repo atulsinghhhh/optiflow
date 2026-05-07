@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import Image from "next/image";
 import axios from "axios";
 import { Download, FileIcon, Loader2, AlertCircle, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -98,13 +97,6 @@ export default function SharedFilePage() {
 
             <div className="relative z-10 w-full max-w-lg animate-in fade-in zoom-in-95 duration-500">
                 <div className="text-center mb-8">
-                    <Image
-                        src="/logo.png"
-                        alt="OptiFlow Logo"
-                        width={48}
-                        height={48}
-                        className="mx-auto rounded-2xl shadow-lg mb-4 bg-gradient-to-br from-violet-500/20 to-fuchsia-600/20"
-                    />
                     <h1 className="text-2xl font-bold">Shared with you</h1>
                     <p className="text-muted-foreground mt-1">
                         {data.sharedBy} has shared a file with you via OptiFlow.

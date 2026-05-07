@@ -1,10 +1,8 @@
-
 "use client";
 
 import * as React from "react";
 import { motion, useScroll, useMotionValueEvent, AnimatePresence } from "framer-motion";
 import { Menu, X, LogIn, UserPlus } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 
 const navItems = [
@@ -39,13 +37,6 @@ export function AnimatedNavFramer() {
                         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6 lg:px-8">
                             {/* Logo */}
                             <Link href="/" className="flex items-center gap-2.5 group">
-                                <Image
-                                    src="/logo.png"
-                                    alt="OptiFlow"
-                                    width={32}
-                                    height={32}
-                                    className="rounded-xl drop-shadow-[0_0_10px_rgba(139,92,246,0.5)] transition-transform duration-200 group-hover:scale-105"
-                                />
                                 <span className="font-bold text-lg tracking-tight">OptiFlow</span>
                             </Link>
 
@@ -133,13 +124,6 @@ export function AnimatedNavFramer() {
                     >
                         <nav className="flex items-center gap-1 rounded-full border border-border/60 bg-background/85 shadow-[0_4px_32px_rgba(0,0,0,0.14)] backdrop-blur-md px-3 h-11">
                             <Link href="/" className="flex items-center gap-1.5 pr-2 mr-1 border-r border-border/50">
-                                <Image
-                                    src="/logo.png"
-                                    alt="OptiFlow"
-                                    width={22}
-                                    height={22}
-                                    className="rounded-md drop-shadow-[0_0_6px_rgba(139,92,246,0.5)]"
-                                />
                                 <span className="font-bold text-xs tracking-tight hidden sm:block">OptiFlow</span>
                             </Link>
 

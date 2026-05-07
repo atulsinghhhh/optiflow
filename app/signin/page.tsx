@@ -64,7 +64,7 @@ const SignInPage = ({ className }: SignInPageProps) => {
     };
 
     return (
-        <div className={cn("flex w-full flex-col min-h-screen bg-black relative", className)}>
+        <div className={cn("flex w-full flex-col min-h-screen bg-[#0F172A] relative", className)}>
             {/* ── Canvas Background ───────────────────────────────────────────── */}
             <div className="absolute inset-0 z-0">
                 {initialCanvasVisible && (

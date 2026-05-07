@@ -147,13 +147,26 @@ function FileManager() {
         }
     };
 
-    const handleShare = async (fileId: string) => {
+    const [shareFileId, setShareFileId] = useState<string | null>(null);
+    const [recipientEmail, setRecipientEmail] = useState("");
+    const [isSharing, setIsSharing] = useState(false);
+
+    const handleShare = async () => {
+        if (!shareFileId) return;
+        setIsSharing(true);
         try {
-            const res = await axios.post("/api/share", { storageId: fileId });
+            const res = await axios.post("/api/share", { 
+                storageId: shareFileId,
+                recipientEmail: recipientEmail.trim() || null
+            });
             setShareLink(res.data.shareUrl);
-            toast.success("Share link generated!");
+            setShareFileId(null);
+            setRecipientEmail("");
+            toast.success(recipientEmail ? "Shared with user!" : "Public share link generated!");
         } catch (error) {
-            toast.error("Failed to generate share link");
+            toast.error("Failed to share file");
+        } finally {
+            setIsSharing(false);
         }
     };
 
@@ -187,7 +200,7 @@ function FileManager() {
     };
 
     return (
-        <div className="space-y-8 max-w-[1400px] mx-auto">
+        <div className="space-y-8 max-w-7xl mx-auto">
             {/* Top Bar */}
             <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-slate-800/50">
                 <div className="flex items-center gap-4">
@@ -213,7 +226,7 @@ function FileManager() {
 
                 <div className="flex flex-wrap items-center gap-4">
                     {/* Search Field */}
-                    <div className="relative group min-w-[300px]">
+                    <div className="relative group min-w-80">
                         <div className="absolute inset-0 bg-violet-500/10 blur-xl opacity-0 group-focus-within:opacity-100 transition-opacity" />
                         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-violet-400 transition-colors w-4.5 h-4.5" />
                         <Input
@@ -262,7 +275,7 @@ function FileManager() {
 
                     <Dialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen}>
                         <DialogTrigger asChild>
-                            <Button className="h-11 px-6 gap-2 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg shadow-violet-500/20 border-none rounded-xl">
+                            <Button className="h-11 px-6 gap-2 bg-linear-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg shadow-violet-500/20 border-none rounded-xl">
                                 <UploadCloud size={18} />
                                 <span className="hidden sm:inline">Upload</span>
                             </Button>
@@ -290,7 +303,7 @@ function FileManager() {
                         </DialogContent>
                     </Dialog>
 
-                    <Avatar className="h-10 w-10 border border-slate-700 p-[1px]">
+                    <Avatar className="h-10 w-10 border border-slate-700 p-px">
                         <AvatarImage src={session?.user?.image || ""} />
                         <AvatarFallback className="bg-slate-800 text-violet-400 font-bold">
                             {session?.user?.name?.[0] || "U"}
@@ -439,10 +452,13 @@ function FileManager() {
                                             <DropdownMenuContent align="end" className="w-56 bg-slate-900 border-slate-800 text-slate-200">
                                                 <DropdownMenuLabel>File Options</DropdownMenuLabel>
                                                 <DropdownMenuSeparator className="bg-slate-800" />
+                                                <DropdownMenuItem className="gap-2" onClick={() => window.open(`/api/storage/${file.id}/download?preview=true`, '_blank')}>
+                                                    <FolderOpen size={14} /> View
+                                                </DropdownMenuItem>
                                                 <DropdownMenuItem className="gap-2" onClick={() => window.open(`/api/storage/${file.id}/download`, '_blank')}>
                                                     <Download size={14} /> Download
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem className="gap-2" onClick={() => handleShare(file.id)}>
+                                                <DropdownMenuItem className="gap-2" onClick={() => setShareFileId(file.id)}>
                                                     <Share2 size={14} /> Create Share Link
                                                 </DropdownMenuItem>
                                                 <DropdownMenuSeparator className="bg-slate-800" />
@@ -452,6 +468,48 @@ function FileManager() {
                                             </DropdownMenuContent>
                                         </DropdownMenu>
                                     </div>
+
+                                    {/* Share Dialog */}
+                                    <Dialog open={!!shareFileId} onOpenChange={(open) => !open && setShareFileId(null)}>
+                                        <DialogContent className="bg-slate-900 border-slate-800">
+                                            <DialogHeader>
+                                                <DialogTitle className="text-white">Share File</DialogTitle>
+                                                <DialogDescription className="text-slate-400">
+                                                    Share this file publicly via link, or directly with another user by email.
+                                                </DialogDescription>
+                                            </DialogHeader>
+                                            <div className="py-4 space-y-4">
+                                                <div className="space-y-2">
+                                                    <label className="text-xs font-bold uppercase tracking-widest text-slate-500">Recipient Email (Optional)</label>
+                                                    <Input
+                                                        placeholder="user@example.com"
+                                                        value={recipientEmail}
+                                                        onChange={(e) => setRecipientEmail(e.target.value)}
+                                                        className="bg-slate-800 border-slate-700 text-white focus:ring-violet-500"
+                                                    />
+                                                    <p className="text-[10px] text-slate-500">Leave blank to create a public link.</p>
+                                                </div>
+                                            </div>
+                                            <DialogFooter>
+                                                <Button variant="ghost" onClick={() => setShareFileId(null)} className="text-slate-400 hover:text-white">Cancel</Button>
+                                                <Button onClick={handleShare} disabled={isSharing} className="bg-violet-600 hover:bg-violet-500">
+                                                    {isSharing ? "Sharing..." : "Share File"}
+                                                </Button>
+                                            </DialogFooter>
+                                        </DialogContent>
+                                    </Dialog>
+
+                                    {/* Image Preview */}
+                                    {file.file_type === "IMAGE" && (
+                                        <div className="mb-4 aspect-video rounded-xl overflow-hidden bg-slate-900/50 border border-slate-700/30 flex items-center justify-center group-hover:border-violet-500/30 transition-colors">
+                                            <img 
+                                                src={`/api/storage/${file.id}/download?preview=true`} 
+                                                alt={file.file_name}
+                                                className="w-full h-full object-cover"
+                                                loading="lazy"
+                                            />
+                                        </div>
+                                    )}
 
                                     <div className="space-y-1">
                                         <h4 className="font-semibold text-white truncate text-sm" title={file.file_name}>
@@ -468,7 +526,10 @@ function FileManager() {
                                         <div className="flex -space-x-2">
                                             <div className="w-6 h-6 rounded-full border border-slate-900 bg-violet-600 flex items-center justify-center text-[10px] font-bold">A</div>
                                         </div>
-                                        <button className="text-[10px] font-bold uppercase tracking-wider text-violet-400 hover:text-violet-300 transition-colors">
+                                        <button 
+                                            onClick={() => window.open(`/api/storage/${file.id}/download?preview=true`, '_blank')}
+                                            className="text-[10px] font-bold uppercase tracking-wider text-violet-400 hover:text-violet-300 transition-colors"
+                                        >
                                             View Details
                                         </button>
                                     </div>

@@ -186,7 +186,7 @@ export default function SignUpPage() {
     };
 
     return (
-        <div className="flex flex-col min-h-screen bg-black relative">
+        <div className="flex flex-col min-h-screen bg-[#0F172A] relative">
             {/* ── Animated Background ─────────────────────────────────────────── */}
             <div className="absolute inset-0 z-0">
                 {showInitial && (

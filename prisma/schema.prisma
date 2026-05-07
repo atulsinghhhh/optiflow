@@ -5,7 +5,7 @@
 // Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
-  provider = "prisma-client"
+  provider = "prisma-client-js"
   output   = "../app/generated/prisma"
 }
 
@@ -35,7 +35,8 @@ model user {
   name         String?
   password     String? // nullable — GitHub OAuth users have no password
   folders      folder[]
-  shared_files shared_file[]
+  shared_by_me   shared_file[] @relation("SharedBy")
+  shared_with_me shared_file[] @relation("SharedWith")
   accounts     account[]
   created_at   DateTime      @default(now())
   updated_at   DateTime      @default(now())
@@ -107,7 +108,9 @@ model shared_file {
   storage_id String
   storage    storage   @relation(fields: [storage_id], references: [id])
   shared_by  String
-  owner      user      @relation(fields: [shared_by], references: [id])
+  owner      user      @relation(fields: [shared_by], references: [id], name: "SharedBy")
+  shared_with_id String?
+  shared_with    user?     @relation(fields: [shared_with_id], references: [id], name: "SharedWith")
   expires_at DateTime?
   created_at DateTime  @default(now())
 }
