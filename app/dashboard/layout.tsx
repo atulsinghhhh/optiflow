@@ -7,6 +7,7 @@ import {
     Trash2, 
     HardDrive, 
     LayoutDashboard,
+    User,
 } from "lucide-react";
 import { LogoutButton } from "@/components/logout-button";
 
@@ -37,6 +38,7 @@ export default async function DashboardLayout({ children, }: { children: React.R
                             { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
                             { href: "/dashboard/files", label: "My Files", icon: FolderOpen },
                             { href: "/dashboard/shared", label: "Shared with me", icon: Users2 },
+                            { href: "/dashboard/profile", label: "Profile", icon: User },
                             { href: "#", label: "Trash", icon: Trash2 },
                         ].map((item) => (
                             <Link
@@ -53,16 +55,18 @@ export default async function DashboardLayout({ children, }: { children: React.R
 
                 {/* User Section */}
                 <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-800/50 bg-[#0F172A]/50 backdrop-blur-md">
-                    <div className="flex items-center gap-3 px-2 py-3 rounded-xl hover:bg-slate-800/30 transition-colors cursor-pointer group">
-                        <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-violet-500 to-fuchsia-500 p-[1px]">
-                            <div className="h-full w-full rounded-full bg-slate-900 flex items-center justify-center text-xs font-bold text-white uppercase">
-                                {session.user.name?.[0] ?? "U"}
+                    <div className="flex items-center gap-3 px-2 py-3 rounded-xl hover:bg-slate-800/30 transition-colors group">
+                        <Link href="/dashboard/profile" className="flex items-center gap-3 flex-1 min-w-0">
+                            <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-violet-500 to-fuchsia-500 p-[1px] shrink-0">
+                                <div className="h-full w-full rounded-full bg-slate-900 flex items-center justify-center text-xs font-bold text-white uppercase">
+                                    {session.user.name?.[0] ?? "U"}
+                                </div>
                             </div>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-white truncate">{session.user.name ?? "User"}</p>
-                            <p className="text-xs text-slate-500 truncate">{session.user.email}</p>
-                        </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-white truncate group-hover:text-violet-300 transition-colors">{session.user.name ?? "User"}</p>
+                                <p className="text-xs text-slate-500 truncate">{session.user.email}</p>
+                            </div>
+                        </Link>
                         <LogoutButton />
                     </div>
                 </div>

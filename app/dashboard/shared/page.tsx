@@ -12,6 +12,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
+import { NotificationsPopover } from "@/components/notifications-popover";
+
 type SharedFile = {
     token: string;
     storage: {
@@ -92,6 +94,7 @@ export default function SharedWithMePage() {
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
                     </div>
+                    <NotificationsPopover />
                 </div>
             </header>
 

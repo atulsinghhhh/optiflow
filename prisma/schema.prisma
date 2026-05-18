@@ -27,6 +27,12 @@ enum fileType {
   FILE
 }
 
+enum notificationType {
+  SHARE
+  SYSTEM
+  STORAGE
+}
+
 /// A registered user of the platform
 model user {
   id           String        @id @default(uuid())
@@ -34,13 +40,28 @@ model user {
   username     String?
   name         String?
   password     String? // nullable — GitHub OAuth users have no password
+  bio          String?
+  avatar_url   String?
   folders      folder[]
   shared_by_me   shared_file[] @relation("SharedBy")
   shared_with_me shared_file[] @relation("SharedWith")
   accounts     account[]
+  notifications notification[]
   created_at   DateTime      @default(now())
   updated_at   DateTime      @default(now())
   storages     storage[]
+}
+
+model notification {
+  id         String           @id @default(uuid())
+  user_id    String
+  user       user             @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  type       notificationType @default(SYSTEM)
+  title      String
+  message    String
+  action_url String?
+  read       Boolean          @default(false)
+  created_at DateTime         @default(now())
 }
 
 /// OAuth / provider account linked to a user (used by NextAuth)
@@ -93,6 +114,10 @@ model storage {
   folder_id     String?
   file_size     Int
   mime_type     String
+  version       Int           @default(1)
+  parent_id     String?
+  parent        storage?      @relation("StorageVersioning", fields: [parent_id], references: [id])
+  versions      storage[]     @relation("StorageVersioning")
   created_at    DateTime      @default(now())
   updated_at    DateTime      @default(now())
   chunks        chunk[]

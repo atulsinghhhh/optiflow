@@ -63,6 +63,18 @@ export async function POST(request: NextRequest) {
             },
         });
 
+        if (sharedWithId) {
+            await prisma.notification.create({
+                data: {
+                    user_id: sharedWithId,
+                    type: "SHARE",
+                    title: "New Shared File",
+                    message: `${session.user.name ?? session.user.email ?? "A user"} shared "${storageFile.file_name.split('-').slice(5).join('-') || storageFile.file_name}" with you.`,
+                    action_url: `/dashboard/shared`,
+                },
+            });
+        }
+
         // Build the public share URL
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
         const shareUrl = `${baseUrl}/share/${token}`;

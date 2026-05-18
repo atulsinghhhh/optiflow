@@ -14,7 +14,7 @@ function Dialog({ ...props }: DialogPrimitive.Root.Props) {
 
 function DialogTrigger({ asChild, ...props }: DialogPrimitive.Trigger.Props & { asChild?: boolean }) {
   const Comp = asChild ? Slot : DialogPrimitive.Trigger
-  return <Comp data-slot="dialog-trigger" {...(asChild ? props : { ...props, asChild })} />
+  return <Comp data-slot="dialog-trigger" {...(asChild ? props : { ...props, asChild }) as any} />
 }
 
 function DialogPortal({ ...props }: DialogPrimitive.Portal.Props) {

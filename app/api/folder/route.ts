@@ -68,8 +68,8 @@ export async function GET(request: NextRequest) {
 
         // Support navigation by filtering by parentId and search
         const { searchParams } = new URL(request.url);
-        const parentId = searchParams.get("parentId");
-        const parent_id = parentId === "null" || !parentId ? null : parentId;
+        const rawParentId = searchParams.get("parentId") || searchParams.get("folderId");
+        const parent_id = rawParentId === "null" || !rawParentId ? null : rawParentId;
         const search = searchParams.get("search");
 
         // Return folders for the user based on the specified parent_id or search query

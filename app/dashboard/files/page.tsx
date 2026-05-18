@@ -4,8 +4,9 @@ import { useState, useEffect, useTransition, Suspense, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import axios from "axios";
 import { useSession } from "next-auth/react";
-import { Folder as FolderIcon,FileIcon,UploadCloud,Plus,MoreVertical,Share2,Download,Trash2,FolderOpen,Search,Grid,List as ListIcon,ArrowLeft,Image as ImageIcon,FileText,Video,Music,MoreHorizontal,Bell } from "lucide-react";
+import { Folder as FolderIcon,FileIcon,UploadCloud,Plus,MoreVertical,Share2,Download,Trash2,FolderOpen,Search,Grid,List as ListIcon,ArrowLeft,Image as ImageIcon,FileText,Video,Music,MoreHorizontal,Bell,History,Edit2,Upload } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { NotificationsPopover } from "@/components/notifications-popover";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -29,6 +30,7 @@ type FileItem = {
     mime_type: string;
     file_type: "IMAGE" | "FILE";
     created_at: string;
+    version?: number;
 };
 
 export default function FileManagerPage() {
@@ -71,6 +73,39 @@ function FileManager() {
     const [uploading, setUploading] = useState(false);
 
     const [shareLink, setShareLink] = useState<string | null>(null);
+
+    const [versionFileId, setVersionFileId] = useState<string | null>(null);
+    const [versions, setVersions] = useState<any[]>([]);
+    const [loadingVersions, setLoadingVersions] = useState(false);
+
+    useEffect(() => {
+        if (!versionFileId) return;
+        const fetchVersions = async () => {
+            setLoadingVersions(true);
+            try {
+                const res = await axios.get(`/api/storage/${versionFileId}/versions`);
+                setVersions(res.data.versions || []);
+            } catch (err) {
+                toast.error("Failed to load version history");
+            } finally {
+                setLoadingVersions(false);
+            }
+        };
+        fetchVersions();
+    }, [versionFileId]);
+
+    const [userAvatar, setUserAvatar] = useState(session?.user?.image || "");
+    useEffect(() => {
+        setUserAvatar(session?.user?.image || "");
+        const handleProfileUpdate = () => {
+            axios.get("/api/profile").then(res => {
+                if (res.data?.user?.avatar_url) setUserAvatar(res.data.user.avatar_url);
+            });
+        };
+        handleProfileUpdate();
+        window.addEventListener("profile_updated", handleProfileUpdate);
+        return () => window.removeEventListener("profile_updated", handleProfileUpdate);
+    }, [session]);
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -132,9 +167,7 @@ function FileManager() {
             formData.append("type", type);
             if (currentFolderId) formData.append("folderId", currentFolderId);
 
-            await axios.post("/api/storage", formData, {
-                headers: { "Content-Type": "multipart/form-data" },
-            });
+            await axios.post("/api/storage", formData);
 
             toast.success("File uploaded successfully");
             setUploadFile(null);
@@ -167,6 +200,65 @@ function FileManager() {
             toast.error("Failed to share file");
         } finally {
             setIsSharing(false);
+        }
+    };
+
+    const [deleteFileId, setDeleteFileId] = useState<string | null>(null);
+    const [deleting, setDeleting] = useState(false);
+
+    const handleDeleteFile = async () => {
+        if (!deleteFileId) return;
+        setDeleting(true);
+        try {
+            await axios.delete(`/api/storage/${deleteFileId}`);
+            toast.success("File deleted successfully");
+            setDeleteFileId(null);
+            fetchData();
+        } catch (error) {
+            toast.error("Failed to delete file");
+        } finally {
+            setDeleting(false);
+        }
+    };
+
+    const [renameFile, setRenameFile] = useState<{ id: string; currentName: string; newName: string } | null>(null);
+    const [renaming, setRenaming] = useState(false);
+
+    const handleRenameFile = async () => {
+        if (!renameFile || !renameFile.newName.trim()) return;
+        setRenaming(true);
+        try {
+            await axios.patch(`/api/storage/${renameFile.id}`, { file_name: renameFile.newName });
+            toast.success("File renamed successfully");
+            setRenameFile(null);
+            fetchData();
+        } catch (error) {
+            toast.error("Failed to rename file");
+        } finally {
+            setRenaming(false);
+        }
+    };
+
+    const [updateVersionFile, setUpdateVersionFile] = useState<FileItem | null>(null);
+    const [updateVersionUpload, setUpdateVersionUpload] = useState<File | null>(null);
+    const [updatingVersion, setUpdatingVersion] = useState(false);
+
+    const handleUpdateVersion = async () => {
+        if (!updateVersionFile || !updateVersionUpload) return;
+        setUpdatingVersion(true);
+        try {
+            const formData = new FormData();
+            formData.append("file", updateVersionUpload);
+            await axios.post(`/api/storage/${updateVersionFile.id}`, formData);
+
+            toast.success("New version uploaded successfully");
+            setUpdateVersionFile(null);
+            setUpdateVersionUpload(null);
+            fetchData();
+        } catch (error) {
+            toast.error("Failed to upload new version");
+        } finally {
+            setUpdatingVersion(false);
         }
     };
 
@@ -238,16 +330,17 @@ function FileManager() {
                     </div>
 
                     <div className="flex items-center gap-2 pr-4 border-r border-slate-800/50">
-                        <Button variant="ghost" size="icon" className="text-slate-400 hover:text-white rounded-xl">
-                            <Bell size={20} />
-                        </Button>
+                        <NotificationsPopover />
                         
+                        <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="text-slate-400 hover:text-white rounded-xl cursor-pointer"
+                            onClick={() => setIsFolderDialogOpen(true)}
+                        >
+                            <Plus size={20} />
+                        </Button>
                         <Dialog open={isFolderDialogOpen} onOpenChange={setIsFolderDialogOpen}>
-                            <DialogTrigger asChild>
-                                <Button variant="ghost" size="icon" className="text-slate-400 hover:text-white rounded-xl">
-                                    <Plus size={20} />
-                                </Button>
-                            </DialogTrigger>
                             <DialogContent className="bg-slate-900 border-slate-800">
                                 <DialogHeader>
                                     <DialogTitle className="text-white">Create New Folder</DialogTitle>
@@ -273,13 +366,14 @@ function FileManager() {
                         </Dialog>
                     </div>
 
+                    <Button 
+                        className="h-11 px-6 gap-2 bg-linear-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg shadow-violet-500/20 border-none rounded-xl cursor-pointer"
+                        onClick={() => setIsUploadDialogOpen(true)}
+                    >
+                        <UploadCloud size={18} />
+                        <span className="hidden sm:inline">Upload</span>
+                    </Button>
                     <Dialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen}>
-                        <DialogTrigger asChild>
-                            <Button className="h-11 px-6 gap-2 bg-linear-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg shadow-violet-500/20 border-none rounded-xl">
-                                <UploadCloud size={18} />
-                                <span className="hidden sm:inline">Upload</span>
-                            </Button>
-                        </DialogTrigger>
                         <DialogContent className="bg-slate-900 border-slate-800">
                             <DialogHeader>
                                 <DialogTitle className="text-white">Upload File</DialogTitle>
@@ -303,12 +397,14 @@ function FileManager() {
                         </DialogContent>
                     </Dialog>
 
-                    <Avatar className="h-10 w-10 border border-slate-700 p-px">
-                        <AvatarImage src={session?.user?.image || ""} />
-                        <AvatarFallback className="bg-slate-800 text-violet-400 font-bold">
-                            {session?.user?.name?.[0] || "U"}
-                        </AvatarFallback>
-                    </Avatar>
+                    <div onClick={() => router.push("/dashboard/profile")} className="cursor-pointer">
+                        <Avatar className="h-10 w-10 border border-slate-700 p-px hover:scale-105 transition-transform">
+                            <AvatarImage src={userAvatar} />
+                            <AvatarFallback className="bg-slate-800 text-violet-400 font-bold">
+                                {session?.user?.name?.[0] || "U"}
+                            </AvatarFallback>
+                        </Avatar>
+                    </div>
                 </div>
             </header>
 
@@ -458,11 +554,23 @@ function FileManager() {
                                                 <DropdownMenuItem className="gap-2" onClick={() => window.open(`/api/storage/${file.id}/download`, '_blank')}>
                                                     <Download size={14} /> Download
                                                 </DropdownMenuItem>
+                                                <DropdownMenuItem className="gap-2" onClick={() => {
+                                                    const clean = file.file_name.split('-').slice(5).join('-') || file.file_name;
+                                                    setRenameFile({ id: file.id, currentName: clean, newName: clean });
+                                                }}>
+                                                    <Edit2 size={14} /> Rename File
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem className="gap-2" onClick={() => setUpdateVersionFile(file)}>
+                                                    <Upload size={14} /> Upload New Version
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem className="gap-2" onClick={() => setVersionFileId(file.id)}>
+                                                    <History size={14} /> Version History
+                                                </DropdownMenuItem>
                                                 <DropdownMenuItem className="gap-2" onClick={() => setShareFileId(file.id)}>
                                                     <Share2 size={14} /> Create Share Link
                                                 </DropdownMenuItem>
                                                 <DropdownMenuSeparator className="bg-slate-800" />
-                                                <DropdownMenuItem className="gap-2 text-rose-400 focus:text-rose-400">
+                                                <DropdownMenuItem className="gap-2 text-rose-400 focus:text-rose-400 cursor-pointer" onClick={() => setDeleteFileId(file.id)}>
                                                     <Trash2 size={14} /> Delete
                                                 </DropdownMenuItem>
                                             </DropdownMenuContent>
@@ -516,6 +624,8 @@ function FileManager() {
                                             {file.file_name.split('-').slice(5).join('-') || file.file_name}
                                         </h4>
                                         <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                                            <span className="px-1.5 py-0.5 bg-violet-500/10 text-violet-300 font-bold rounded-md">v{file.version || 1}</span>
+                                            <span>•</span>
                                             <span>{formatBytes(file.file_size)}</span>
                                             <span>•</span>
                                             <span>{formatDistanceToNow(new Date(file.created_at), { addSuffix: true })}</span>
@@ -539,6 +649,122 @@ function FileManager() {
                     )}
                 </AnimatePresence>
             )}
+
+            {/* Version History Dialog */}
+            <Dialog open={!!versionFileId} onOpenChange={(open) => !open && setVersionFileId(null)}>
+                <DialogContent className="bg-slate-900 border-slate-800 max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle className="text-white flex items-center gap-2">
+                            <History size={18} className="text-violet-400" /> Version History
+                        </DialogTitle>
+                        <DialogDescription className="text-slate-400">
+                            Track and restore past iterations of this file.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4 space-y-3 max-h-[360px] overflow-y-auto pr-2">
+                        {loadingVersions ? (
+                            <div className="py-12 flex justify-center">
+                                <div className="h-8 w-8 border-4 border-violet-500/20 border-t-violet-500 rounded-full animate-spin" />
+                            </div>
+                        ) : versions.length === 0 ? (
+                            <div className="text-center py-8 text-xs text-slate-500">No versions found</div>
+                        ) : (
+                            versions.map((ver, idx) => (
+                                <div key={ver.id} className="p-3.5 bg-slate-800/40 border border-slate-700/50 rounded-xl flex items-center justify-between gap-4">
+                                    <div className="space-y-1 min-w-0 flex-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-bold text-white bg-violet-500/20 px-2 py-0.5 rounded-md text-violet-300">
+                                                v{ver.version} {idx === 0 && "(Latest)"}
+                                            </span>
+                                            <span className="text-xs text-slate-400 truncate font-mono">{ver.file_name.split('-').slice(5).join('-') || ver.file_name}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                                            <span>{formatBytes(ver.file_size)}</span>
+                                            <span>•</span>
+                                            <span>{formatDistanceToNow(new Date(ver.created_at), { addSuffix: true })}</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                        <Button variant="ghost" size="sm" onClick={() => window.open(`/api/storage/${ver.id}/download`, '_blank')} className="h-8 px-2 text-xs text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700">
+                                            <Download size={14} className="mr-1" /> Download
+                                        </Button>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Rename File Dialog */}
+            <Dialog open={!!renameFile} onOpenChange={(open) => !open && setRenameFile(null)}>
+                <DialogContent className="bg-slate-900 border-slate-800">
+                    <DialogHeader>
+                        <DialogTitle className="text-white">Rename File</DialogTitle>
+                        <DialogDescription className="text-slate-400">
+                            Enter a new name for this file.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4">
+                        <Input
+                            value={renameFile?.newName || ""}
+                            onChange={(e) => setRenameFile(prev => prev ? { ...prev, newName: e.target.value } : null)}
+                            className="bg-slate-800 border-slate-700 text-white focus:ring-violet-500"
+                        />
+                    </div>
+                    <DialogFooter>
+                        <Button variant="ghost" onClick={() => setRenameFile(null)} className="text-slate-400 hover:text-white">Cancel</Button>
+                        <Button onClick={handleRenameFile} disabled={renaming || !renameFile?.newName.trim()} className="bg-violet-600 hover:bg-violet-500">
+                            {renaming ? "Saving..." : "Save"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Upload New Version Dialog */}
+            <Dialog open={!!updateVersionFile} onOpenChange={(open) => { if (!open) { setUpdateVersionFile(null); setUpdateVersionUpload(null); } }}>
+                <DialogContent className="bg-slate-900 border-slate-800">
+                    <DialogHeader>
+                        <DialogTitle className="text-white">Upload New Version</DialogTitle>
+                        <DialogDescription className="text-slate-400">
+                            Upload a new version for <span className="font-bold text-white">{updateVersionFile && (updateVersionFile.file_name.split('-').slice(5).join('-') || updateVersionFile.file_name)}</span>.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4">
+                        <Input
+                            type="file"
+                            onChange={(e) => setUpdateVersionUpload(e.target.files?.[0] || null)}
+                            className="bg-slate-800 border-slate-700 text-white cursor-pointer"
+                        />
+                    </div>
+                    <DialogFooter>
+                        <Button variant="ghost" onClick={() => { setUpdateVersionFile(null); setUpdateVersionUpload(null); }} className="text-slate-400 hover:text-white">Cancel</Button>
+                        <Button onClick={handleUpdateVersion} disabled={updatingVersion || !updateVersionUpload} className="bg-violet-600 hover:bg-violet-500">
+                            {updatingVersion ? "Uploading..." : "Upload Version"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Delete Confirmation Dialog */}
+            <Dialog open={!!deleteFileId} onOpenChange={(open) => !open && setDeleteFileId(null)}>
+                <DialogContent className="bg-slate-900 border-slate-800">
+                    <DialogHeader>
+                        <DialogTitle className="text-rose-400 flex items-center gap-2">
+                            <Trash2 size={18} /> Confirm Deletion
+                        </DialogTitle>
+                        <DialogDescription className="text-slate-400">
+                            Are you sure you want to delete this file and all its historical versions? This action cannot be undone.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="mt-4">
+                        <Button variant="ghost" onClick={() => setDeleteFileId(null)} className="text-slate-400 hover:text-white">Cancel</Button>
+                        <Button onClick={handleDeleteFile} disabled={deleting} className="bg-rose-600 hover:bg-rose-500 text-white border-none shadow-lg shadow-rose-500/20">
+                            {deleting ? "Deleting..." : "Delete Permanently"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

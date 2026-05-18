@@ -89,20 +89,90 @@ export async function POST(request: NextRequest) {
 
         // Build the public URL for the stored object
         const originalUrl = `${process.env.MINIO_PUBLIC_URL}/${bucket}/${fileName}`;
+        const folder_id_val = folderId === "null" || !folderId ? null : folderId;
 
-        // Persist the storage record with file_type and folder association
-        const storageFile = await prisma.storage.create({
-            data: {
-                file_type: type === "image" ? "IMAGE" : "FILE",
-                status: "PENDING",
-                original_url: originalUrl,
-                file_name: fileName,
-                file_size: file.size,
-                mime_type: file.type,
+        // Check if a root file with the same clean name already exists in this folder
+        const cleanName = file.name;
+        const existingRoot = await prisma.storage.findFirst({
+            where: {
                 user_id: session.user.id,
-                folder_id: folderId === "null" || !folderId ? null : folderId,
-            },
+                folder_id: folder_id_val,
+                parent_id: null,
+                file_name: { endsWith: `-${cleanName}` }
+            }
         });
+
+        let storageFile;
+
+        if (existingRoot) {
+            // Archive the existing root state into a child version record
+            await prisma.storage.create({
+                data: {
+                    file_type: existingRoot.file_type,
+                    status: existingRoot.status,
+                    original_url: existingRoot.original_url,
+                    processed_url: existingRoot.processed_url,
+                    file_name: existingRoot.file_name,
+                    user_id: existingRoot.user_id,
+                    folder_id: existingRoot.folder_id,
+                    file_size: existingRoot.file_size,
+                    mime_type: existingRoot.mime_type,
+                    version: existingRoot.version,
+                    parent_id: existingRoot.id,
+                    created_at: existingRoot.updated_at,
+                }
+            });
+
+            const newVersion = existingRoot.version + 1;
+
+            // Update the root record to reflect the new version
+            storageFile = await prisma.storage.update({
+                where: { id: existingRoot.id },
+                data: {
+                    original_url: originalUrl,
+                    file_name: fileName,
+                    file_size: file.size,
+                    mime_type: file.type,
+                    version: newVersion,
+                    updated_at: new Date(),
+                }
+            });
+
+            await prisma.notification.create({
+                data: {
+                    user_id: session.user.id,
+                    type: "STORAGE",
+                    title: "File Version Updated",
+                    message: `Successfully uploaded version ${newVersion} of "${cleanName}".`,
+                    action_url: `/dashboard/files`,
+                }
+            });
+        } else {
+            // Create a brand new storage record
+            storageFile = await prisma.storage.create({
+                data: {
+                    file_type: type === "image" ? "IMAGE" : "FILE",
+                    status: "PENDING",
+                    original_url: originalUrl,
+                    file_name: fileName,
+                    file_size: file.size,
+                    mime_type: file.type,
+                    user_id: session.user.id,
+                    folder_id: folder_id_val,
+                    version: 1,
+                },
+            });
+
+            await prisma.notification.create({
+                data: {
+                    user_id: session.user.id,
+                    type: "STORAGE",
+                    title: "New File Uploaded",
+                    message: `Successfully uploaded "${cleanName}".`,
+                    action_url: `/dashboard/files`,
+                }
+            });
+        }
 
         // Only push images to the processing queue (files don't need image processing)
         if (type === "image") {
@@ -143,7 +213,7 @@ export async function GET(request: NextRequest) {
         const folder_id = folderId === "null" || !folderId ? null : folderId;
         const search = searchParams.get("search");
 
-        const whereClause: any = { user_id: session.user.id };
+        const whereClause: any = { user_id: session.user.id, parent_id: null };
 
         if (search) {
             whereClause.file_name = { contains: search, mode: "insensitive" };
