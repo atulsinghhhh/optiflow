@@ -1,5 +1,8 @@
 # OptiFlow
 
+[![Frontend CI](https://github.com/atulsinghhhh/optiflow/actions/workflows/frontend-ci.yml/badge.svg)](https://github.com/atulsinghhhh/optiflow/actions/workflows/frontend-ci.yml)
+[![Deploy to Production](https://github.com/atulsinghhhh/optiflow/actions/workflows/deploy.yml/badge.svg)](https://github.com/atulsinghhhh/optiflow/actions/workflows/deploy.yml)
+
 OptiFlow is a high-performance, scalable file management and processing platform built with Next.js, Prisma, and MinIO. It provides a robust architecture for uploading, storing, and processing files with a focus on background job processing and efficient storage management.
 
 ## 🚀 Features
@@ -111,6 +114,32 @@ OptiFlow includes a dedicated worker (`workers/worker.ts`) that listens to a Red
 4. Converts the image to JPEG format.
 5. Uploads the processed thumbnail back to MinIO with a `processed-` prefix.
 6. Updates the storage record status to `COMPLETED` and stores the `processed_url`.
+
+## 🚀 CI/CD Pipeline & Docker Image
+
+OptiFlow uses GitHub Actions for continuous integration and Docker image building. The pipeline automatically builds, tests, and pushes the Next.js frontend to Docker Hub.
+
+### Pipeline Flow
+1. **Push/PR to `main`**: Triggers the `Frontend CI` workflow.
+   - Installs dependencies with cache.
+   - Runs ESLint.
+   - Runs TypeScript type checks.
+   - Builds the Next.js production app.
+2. **Push to `main`**: Triggers the `Build and Push Docker Image` workflow.
+   - Builds a multi-stage optimized Docker image for the Next.js app.
+   - Pushes the image to Docker Hub.
+
+### Setting Up GitHub Secrets
+
+To enable the Docker Hub image push pipeline, configure the following secrets in your GitHub repository (`Settings` > `Secrets and variables` > `Actions`):
+
+- `DOCKER_USERNAME`: Your Docker Hub username.
+- `DOCKER_PASSWORD`: Your Docker Hub password or Personal Access Token (PAT).
+- `NEXT_PUBLIC_API_URL`: The public API URL for the frontend (e.g., `https://optiflow.example.com`).
+
+### Infrastructure Validation
+
+The NGINX reverse proxy exposes a health check endpoint at `/health` to validate the environment status.
 
 ## 🤝 Contributing
 
