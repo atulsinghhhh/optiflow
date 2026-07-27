@@ -1,24 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { signIn } from "next-auth/react";
 import { motion, AnimatePresence } from "framer-motion";
-import { cn } from "@/lib/utils";
 import axios from "axios";
 import { ArrowLeft, Check } from "lucide-react";
 
-/** Derives a clean username from an email address */
-function deriveUsername(email: string): string {
-    const local = email.split("@")[0] ?? "";
-    return local
-        .toLowerCase()
-        .replace(/[^a-z0-9_]/g, "_")
-        .replace(/_+/g, "_")
-        .replace(/^_|_$/g, "")
-        .slice(0, 24);
-}
+const AUTH_SVC_URL = process.env.NEXT_PUBLIC_AUTH_SVC_URL ?? "http://localhost:8081";
 
 const GitHubIcon = () => (
     <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 shrink-0">
@@ -26,8 +15,8 @@ const GitHubIcon = () => (
     </svg>
 );
 
-const Spinner = ({ dark = false }: { dark?: boolean }) => (
-    <svg className={cn("animate-spin w-4 h-4", dark ? "text-white" : "text-[#0A2540]")} viewBox="0 0 24 24" fill="none">
+const Spinner = () => (
+    <svg className="animate-spin w-4 h-4 text-white" viewBox="0 0 24 24" fill="none">
         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
     </svg>
@@ -43,22 +32,10 @@ export default function SignUpPage() {
 
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
-    const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
-    const [isGitHubLoading, setIsGitHubLoading] = useState(false);
     const [step, setStep] = useState<"form" | "success">("form");
-
-    useEffect(() => {
-        setUsername(deriveUsername(email));
-    }, [email]);
-
-    const handleGitHub = async () => {
-        setIsGitHubLoading(true);
-        setError(null);
-        await signIn("github", { callbackUrl: "/dashboard" });
-    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -66,11 +43,12 @@ export default function SignUpPage() {
         setIsLoading(true);
 
         try {
-            await axios.post("/api/auth/signup", { email, password, name, username });
+            await axios.post(`${AUTH_SVC_URL}/signup`, { email, password, name });
             setStep("success");
             setTimeout(() => router.push("/signin"), 1200);
-        } catch (err: any) {
-            setError(err.response?.data?.error ?? "Failed to create account. Please try again.");
+        } catch (err) {
+            const message = axios.isAxiosError(err) ? err.response?.data?.error : undefined;
+            setError(message ?? "Failed to create account. Please try again.");
             setIsLoading(false);
         }
     };
@@ -109,14 +87,14 @@ export default function SignUpPage() {
                                 </div>
 
                                 <button
-                                    onClick={handleGitHub}
-                                    disabled={isGitHubLoading || isLoading}
-                                    className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-50
-                             text-[#0A2540] border border-slate-200 rounded-lg py-2.5 px-4
-                             transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                                    disabled
+                                    title="GitHub sign-in isn't wired up yet — auth-svc doesn't expose an OAuth exchange endpoint"
+                                    className="w-full flex items-center justify-center gap-3 bg-slate-50
+                             text-slate-400 border border-slate-200 rounded-lg py-2.5 px-4
+                             cursor-not-allowed text-sm font-medium"
                                 >
-                                    {isGitHubLoading ? <Spinner /> : <GitHubIcon />}
-                                    Continue with GitHub
+                                    <GitHubIcon />
+                                    Continue with GitHub (coming soon)
                                 </button>
 
                                 <div className="flex items-center gap-4">
@@ -141,6 +119,7 @@ export default function SignUpPage() {
                                         placeholder="Full name"
                                         value={name}
                                         onChange={(e) => setName(e.target.value)}
+                                        required
                                         autoComplete="name"
                                         className={inputCls}
                                     />
@@ -155,23 +134,6 @@ export default function SignUpPage() {
                                         className={inputCls}
                                     />
 
-                                    <div className="relative">
-                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm select-none pointer-events-none">
-                                            @
-                                        </span>
-                                        <input
-                                            type="text"
-                                            placeholder="username"
-                                            value={username}
-                                            onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
-                                            maxLength={24}
-                                            className={cn(inputCls, "pl-8")}
-                                        />
-                                    </div>
-                                    <p className="text-[11px] text-slate-400 -mt-1 pl-1">
-                                        Auto-generated from your email — you can change it
-                                    </p>
-
                                     <input
                                         type="password"
                                         placeholder="Password (min. 6 characters)"
@@ -185,7 +147,7 @@ export default function SignUpPage() {
 
                                     <motion.button
                                         type="submit"
-                                        disabled={isLoading || isGitHubLoading || !email || !password}
+                                        disabled={isLoading || !email || !password || !name}
                                         whileHover={{ scale: 1.01 }}
                                         whileTap={{ scale: 0.98 }}
                                         className="w-full flex items-center justify-center gap-2 rounded-full bg-[#0A2540]
@@ -193,7 +155,7 @@ export default function SignUpPage() {
                                hover:bg-[#0A2540]/90 transition-all duration-200
                                disabled:opacity-40 disabled:cursor-not-allowed disabled:scale-100"
                                     >
-                                        {isLoading ? <Spinner dark /> : "Create account"}
+                                        {isLoading ? <Spinner /> : "Create account"}
                                     </motion.button>
                                 </form>
 

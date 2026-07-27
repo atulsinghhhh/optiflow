@@ -3,8 +3,14 @@ name: Frontend CI
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-ci.yml"
   pull_request:
     branches: [ "main" ]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-ci.yml"
 
 jobs:
   build-and-test:
@@ -36,5 +42,4 @@ jobs:
       - name: Build Next.js app
         run: npm run build
         env:
-          # Add any environment variables required for build time
-          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL || 'http://localhost:3000' }}
+          NEXT_PUBLIC_AUTH_SVC_URL: ${{ secrets.NEXT_PUBLIC_AUTH_SVC_URL || 'http://localhost:8081' }}

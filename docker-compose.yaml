@@ -36,31 +36,18 @@ services:
       context: ./frontend
       dockerfile: dockerfile
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+        NEXT_PUBLIC_AUTH_SVC_URL: ${NEXT_PUBLIC_AUTH_SVC_URL:-}
     image: ${DOCKER_USERNAME:-atulsinghhhh}/optiflow:latest
     container_name: optiflow_web
     restart: unless-stopped
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
-      - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@db:5432/optiflow
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - MINIO_ENDPOINT=storage
-      - MINIO_PORT=9000
-      - MINIO_ACCESS_KEY=optiflow
-      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      - NEXT_PUBLIC_AUTH_SVC_URL=${NEXT_PUBLIC_AUTH_SVC_URL}
       - AUTH_SECRET=${AUTH_SECRET}
       - AUTH_TRUST_HOST=true
       - NEXTAUTH_URL=http://localhost
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-      - GITHUB_ID=${GITHUB_ID}
-      - GITHUB_SECRET=${GITHUB_SECRET}
       - NEXT_PUBLIC_APP_URL=http://localhost
-    depends_on:
-      - db
-      - redis
-      - storage
 
   nginx:
     image: nginx:alpine

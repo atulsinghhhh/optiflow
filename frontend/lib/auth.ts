@@ -1,22 +1,48 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import GitHub from "next-auth/providers/github";
-import prisma from "@/lib/prisma";
-import bcrypt from "bcryptjs";
 import { z } from "zod";
 
-// Zod schema for validating credentials at sign-in
+// auth-svc: POST /login -> { access_token, refresh_token }. It returns no user
+// info, so the only identity we can attach comes from the JWT's `user_id`
+// claim (decoded, not verified — we already trust the response since it just
+// came back over HTTPS from auth-svc itself).
+const AUTH_SVC_URL = process.env.NEXT_PUBLIC_AUTH_SVC_URL ?? "http://localhost:8081";
+
+declare module "next-auth" {
+    interface User {
+        accessToken?: string;
+        refreshToken?: string;
+    }
+    interface Session {
+        accessToken?: string;
+    }
+}
+
 const signInSchema = z.object({
     email: z.string().email("Invalid email address"),
     password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
+type AuthSvcTokens = {
+    access_token: string;
+    refresh_token?: string;
+};
+
+function decodeUserId(accessToken: string): string | null {
+    try {
+        const payload = accessToken.split(".")[1];
+        const json = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+        return typeof json.user_id === "string" ? json.user_id : null;
+    } catch {
+        return null;
+    }
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
     providers: [
-        GitHub({
-            clientId: process.env.GITHUB_ID!,
-            clientSecret: process.env.GITHUB_SECRET!,
-        }),
+        // GitHub OAuth removed for now — auth-svc has no OAuth exchange endpoint
+        // yet (only /signup, /login, /refresh with email+password). Re-add once
+        // auth-svc supports issuing tokens for an OAuth-authenticated user.
         Credentials({
             credentials: {
                 email: { label: "Email", type: "email" },
@@ -24,97 +50,37 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             },
 
             async authorize(credentials) {
-                // 1. Validate the incoming credentials with Zod
                 const parsed = signInSchema.safeParse(credentials);
                 if (!parsed.success) return null;
-
                 const { email, password } = parsed.data;
 
-                // 2. Look up the user by email
-                const user = await prisma.user.findUnique({ where: { email } });
-                if (!user || !user.password) return null;
+                const res = await fetch(`${AUTH_SVC_URL}/login`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email, password }),
+                });
+                if (!res.ok) return null;
 
-                // 3. Compare the submitted password against the stored hash
-                const passwordMatch = await bcrypt.compare(password, user.password);
-                if (!passwordMatch) return null;
+                const tokens: AuthSvcTokens = await res.json();
+                const userId = decodeUserId(tokens.access_token);
+                if (!userId) return null;
 
                 return {
-                    id: user.id,
-                    email: user.email,
-                    name: user.name ?? user.username ?? null,
+                    id: userId,
+                    email,
+                    accessToken: tokens.access_token,
+                    refreshToken: tokens.refresh_token,
                 };
             },
         }),
     ],
 
     callbacks: {
-        async signIn({ user, account }) {
-            // For GitHub OAuth: upsert the user and link the account
-            if (account?.provider === "github" && user.email) {
-                const existingUser = await prisma.user.findUnique({
-                    where: { email: user.email },
-                });
-
-                if (!existingUser) {
-                    // Create a new user for first-time GitHub login
-                    const newUser = await prisma.user.create({
-                        data: {
-                            email: user.email,
-                            name: user.name ?? null,
-                            accounts: {
-                                create: {
-                                    type: account.type,
-                                    provider: account.provider,
-                                    providerAccountId: account.providerAccountId,
-                                    refresh_token: account.refresh_token ?? null,
-                                    access_token: account.access_token ?? null,
-                                    expires_at: account.expires_at ?? null,
-                                    token_type: account.token_type ?? null,
-                                    scope: account.scope ?? null,
-                                    id_token: account.id_token ?? null,
-                                    session_state: account.session_state as string ?? null,
-                                },
-                            },
-                        },
-                    });
-                    // Inject our DB id so jwt callback gets it
-                    user.id = newUser.id;
-                } else {
-                    // Link the GitHub account if not already linked
-                    const linked = await prisma.account.findUnique({
-                        where: {
-                            provider_providerAccountId: {
-                                provider: account.provider,
-                                providerAccountId: account.providerAccountId,
-                            },
-                        },
-                    });
-                    if (!linked) {
-                        await prisma.account.create({
-                            data: {
-                                userId: existingUser.id,
-                                type: account.type,
-                                provider: account.provider,
-                                providerAccountId: account.providerAccountId,
-                                refresh_token: account.refresh_token ?? null,
-                                access_token: account.access_token ?? null,
-                                expires_at: account.expires_at ?? null,
-                                token_type: account.token_type ?? null,
-                                scope: account.scope ?? null,
-                                id_token: account.id_token ?? null,
-                                session_state: account.session_state as string ?? null,
-                            },
-                        });
-                    }
-                    user.id = existingUser.id;
-                }
-            }
-            return true;
-        },
-
         async jwt({ token, user }) {
             if (user) {
                 token.id = user.id;
+                token.accessToken = user.accessToken;
+                token.refreshToken = user.refreshToken;
             }
             return token;
         },
@@ -122,6 +88,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         async session({ session, token }) {
             if (token?.id) {
                 session.user.id = token.id as string;
+            }
+            if (typeof token.accessToken === "string") {
+                session.accessToken = token.accessToken;
             }
             return session;
         },

@@ -32,14 +32,7 @@ const SignInPage = () => {
     const [password, setPassword] = useState("");
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
-    const [isGitHubLoading, setIsGitHubLoading] = useState(false);
     const [step, setStep] = useState<"form" | "success">("form");
-
-    const handleGitHub = async () => {
-        setIsGitHubLoading(true);
-        setError(null);
-        await signIn("github", { callbackUrl: "/dashboard" });
-    };
 
     const handleCredentials = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -95,14 +88,14 @@ const SignInPage = () => {
                                 </div>
 
                                 <button
-                                    onClick={handleGitHub}
-                                    disabled={isGitHubLoading || isLoading}
-                                    className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-50
-                             text-[#0A2540] border border-slate-200 rounded-lg py-2.5 px-4
-                             transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                                    disabled
+                                    title="GitHub sign-in isn't wired up yet — auth-svc doesn't expose an OAuth exchange endpoint"
+                                    className="w-full flex items-center justify-center gap-3 bg-slate-50
+                             text-slate-400 border border-slate-200 rounded-lg py-2.5 px-4
+                             cursor-not-allowed text-sm font-medium"
                                 >
-                                    {isGitHubLoading ? <Spinner /> : <GitHubIcon />}
-                                    Continue with GitHub
+                                    <GitHubIcon />
+                                    Continue with GitHub (coming soon)
                                 </button>
 
                                 <div className="flex items-center gap-4">
@@ -144,7 +137,7 @@ const SignInPage = () => {
 
                                     <motion.button
                                         type="submit"
-                                        disabled={isLoading || isGitHubLoading || !email || !password}
+                                        disabled={isLoading || !email || !password}
                                         whileHover={{ scale: 1.01 }}
                                         whileTap={{ scale: 0.98 }}
                                         className="w-full flex items-center justify-center gap-2 rounded-full bg-[#0A2540]
