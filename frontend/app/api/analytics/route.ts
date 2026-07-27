@@ -53,7 +53,7 @@ export async function GET(_request: NextRequest) {
 
         const formattedTypes: Record<string, number> = {};
 
-        fileTypes.forEach((item) => {
+        fileTypes.forEach((item: (typeof fileTypes)[number]) => {
             formattedTypes[item.file_type] = item._count.file_type;
         });
 

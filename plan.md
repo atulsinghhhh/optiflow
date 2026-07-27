@@ -26,8 +26,8 @@ This is a rewrite, not a port: backend services are split by responsibility from
 |---|---|---|
 | Language | Go 1.22+ | concurrency for workers, single static binaries, easy containerization |
 | HTTP framework | `chi` (or `echo`) | lightweight, stdlib-compatible, good middleware ecosystem |
-| DB access | `sqlc` + `pgx` | typed SQL, no ORM magic |
-| Migrations | `golang-migrate` | plain SQL migrations, CI-friendly |
+| DB access | `GORM` | fast iteration, struct-based models double as migration source |
+| Migrations | `GORM AutoMigrate` (+ hand-written SQL in `/backend/migrations` for drops/renames/backfills) | additive changes ship with the model, no separate codegen step |
 | DB | PostgreSQL 16 (+ PgBouncer from v1) | connection pooling matters early with many service instances |
 | Object storage | MinIO (S3-compatible), swappable for AWS S3 | dev/prod parity |
 | Queue | Redis + **asynq** | retries, backoff, scheduled jobs, dashboard (`asynqmon`) |

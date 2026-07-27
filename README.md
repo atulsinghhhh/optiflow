@@ -5,7 +5,7 @@
 
 StreamVault is a file & video upload, storage, sharing, and streaming-preview platform. It's a from-scratch rewrite of the original OptiFlow (Next.js + Prisma monolith) into a **Go multi-service backend paired with a Next.js frontend**. See [`plan.md`](./plan.md) for the full architecture and v1/v2/v3 roadmap, and [`claude.md`](./claude.md) for engineering conventions.
 
-> **Status:** the Next.js frontend below is the original, fully working OptiFlow app. The Go backend (`/backend`) is a fresh scaffold — service skeletons with health checks only, no business logic wired yet. The frontend still talks to its own Next.js API routes / Prisma / MinIO directly; it has not been switched over to the Go backend yet.
+> **Status:** the Next.js frontend below is the original, fully working OptiFlow app — it has not been switched over to the Go backend yet and still talks to its own Next.js API routes / Prisma / MinIO directly. On the Go backend, `auth-svc` is implemented and tested end-to-end (signup, login, JWT access+refresh, GORM-backed Postgres). `api-svc`, `upload-svc`, `notify-svc`, `image-worker`, `video-worker` are still scaffolds exposing only `/healthz`.
 
 ## 📦 Repo Structure
 
@@ -20,8 +20,8 @@ This is a monorepo: Go backend and Next.js frontend live in separate top-level t
     /notify-svc      # :8084
     /image-worker
     /video-worker
-  /internal          # auth, storage, queue, db, models, middleware (shared, unexported)
-  /migrations        # golang-migrate SQL files
+  /internal          # auth (JWT/bcrypt), storage, queue, db (GORM connection), models (GORM structs), middleware
+  /migrations        # hand-written SQL for schema changes AutoMigrate can't express (drops, renames, backfills)
   go.mod
 
 /frontend            # existing Next.js app (App Router) — the working product today
@@ -71,7 +71,7 @@ Planned on the Go backend (see `plan.md` for the full v1/v2/v3 breakdown): presi
 - **Animations:** [Framer Motion](https://www.framer.com/motion/) & [React Three Fiber](https://r3f.docs.pmnd.rs/)
 
 ### Backend (in progress)
-- **Language:** Go 1.22+ · **HTTP:** `chi` · **DB:** PostgreSQL via `sqlc` + `pgx` · **Migrations:** `golang-migrate` · **Queue:** Redis + `asynq` · **Storage:** MinIO · **Auth:** JWT (`golang-jwt`) + bcrypt · **Video:** `ffmpeg` · **Logging:** `zerolog` · **Metrics:** Prometheus · **Tracing:** OpenTelemetry
+- **Language:** Go 1.22+ · **HTTP:** `chi` · **DB:** PostgreSQL via `GORM` · **Migrations:** `GORM AutoMigrate` (+ hand-written SQL for destructive changes) · **Queue:** Redis + `asynq` · **Storage:** MinIO · **Auth:** JWT (`golang-jwt`) + bcrypt · **Video:** `ffmpeg` · **Logging:** `zerolog` · **Metrics:** Prometheus · **Tracing:** OpenTelemetry
 
 Full rationale for each choice is in `plan.md`.
 
@@ -136,19 +136,22 @@ npm run dev      # Next.js dev server
 npm run worker   # background worker (thumbnail generation)
 ```
 
-## ⚙️ Getting Started — Backend (Go, scaffold)
+## ⚙️ Getting Started — Backend (Go)
 
 ```bash
-# local dev stack for the Go services (separate Postgres/Redis/MinIO from the frontend stack —
-# don't run both compose files at once, ports collide)
+# local dev stack for the Go services: Postgres :5435, Redis :6381, MinIO :9010-9011.
+# Ports are offset from defaults to avoid colliding with the frontend's docker-compose.yaml
+# and any locally-installed Postgres/Redis — don't run both compose files at once regardless.
 docker compose -f deploy/compose/docker-compose.yaml up -d
 
-# run a service
 cd backend
-go run ./cmd/api-svc      # :8082/healthz
-go run ./cmd/auth-svc     # :8081/healthz
-go run ./cmd/upload-svc   # :8083/healthz
-go run ./cmd/notify-svc   # :8084/healthz
+cp cmd/auth-svc/.env.example cmd/auth-svc/.env   # then edit JWT_SECRET
+export $(cat cmd/auth-svc/.env | xargs)
+
+go run ./cmd/auth-svc     # :8081 — signup/login/refresh, JWT access+refresh, GORM AutoMigrate on startup
+go run ./cmd/api-svc      # :8082/healthz (scaffold)
+go run ./cmd/upload-svc   # :8083/healthz (scaffold)
+go run ./cmd/notify-svc   # :8084/healthz (scaffold)
 
 # build / vet / test everything
 go build ./...
@@ -156,7 +159,18 @@ go vet ./...
 go test ./... -race -cover
 ```
 
-No business logic is wired yet — each `-svc` only exposes `/healthz`, and `image-worker`/`video-worker` are no-op stubs pending the `asynq` queue integration (Phase v1, see `plan.md`).
+### auth-svc endpoints (implemented)
+
+| Method | Path | Body | Notes |
+|---|---|---|---|
+| POST | `/signup` | `{email, password, name}` | 201 + `{access_token, refresh_token}`, 409 if email taken |
+| POST | `/login` | `{email, password}` | 200 + `{access_token, refresh_token}`, 401 on bad credentials |
+| POST | `/refresh` | `{refresh_token}` | 200 + `{access_token}`, 401 if invalid/expired/wrong token type |
+| GET | `/healthz` | — | 200 `ok` |
+
+Access tokens expire in 15 minutes, refresh tokens in 7 days (`internal/auth/jwt.go`). Passwords are bcrypt-hashed (`internal/auth/password.go`). The `users` table schema lives in `internal/models/user.go` and is applied via `GORM AutoMigrate` on every `auth-svc` startup.
+
+`api-svc`, `upload-svc`, `notify-svc` only expose `/healthz` so far. `image-worker`/`video-worker` are no-op stubs pending the `asynq` queue integration (Phase v1, see `plan.md`).
 
 ## 🖼️ Thumbnail Generation (frontend, current)
 

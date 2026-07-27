@@ -14,8 +14,8 @@ Check `plan.md`'s current tier (v1/v2/v3) before adding a feature — don't buil
 
 - Go 1.22+
 - HTTP: `chi`
-- DB: PostgreSQL via `sqlc` + `pgx`
-- Migrations: `golang-migrate`
+- DB: PostgreSQL via `GORM`
+- Migrations: `GORM AutoMigrate` (models in `/internal/models` are the source of truth for schema)
 - Queue: Redis + `asynq`
 - Object storage: MinIO (S3 API-compatible)
 - Auth: JWT (access + refresh), bcrypt for password hashing
@@ -39,14 +39,14 @@ This is a monorepo containing both the Go backend and the Next.js frontend, kept
     /notify-svc/main.go
     /search-indexer/main.go   # v2+
   /internal
-    /auth        # token issuance/validation, shared across services
+    /auth        # password hashing + JWT issuance/validation, shared across services
     /storage     # MinIO client wrapper
     /queue       # asynq client/task type definitions (shared task payloads)
     /events      # NATS publish/subscribe helpers (v2+)
-    /db          # sqlc-generated code + queries/*.sql
-    /models      # shared domain types
+    /db          # GORM connection + AutoMigrate wiring
+    /models      # GORM structs — shared domain types, schema source of truth
     /middleware  # rate limiting, auth, logging, request-id, circuit breakers (v2+)
-  /migrations    # golang-migrate SQL files
+  /migrations    # hand-written SQL for destructive/data changes GORM AutoMigrate can't express
 /frontend
   /app           # Next.js App Router pages
   /components
@@ -66,29 +66,23 @@ Each `/backend/cmd/*-svc` is an independently deployable binary. Shared backend 
 
 - **Errors**: always wrap with context (`fmt.Errorf("doing X: %w", err)`), never swallow silently. Services log errors as structured JSON with `zerolog`.
 - **Config**: read from env vars only, no hardcoded connection strings. Provide a `.env.example` for every service that needs one.
-- **DB queries**: write raw SQL in `/internal/db/queries/*.sql`, regenerate with `sqlc generate` — never hand-write query structs.
+- **DB models**: GORM structs live in `/internal/models`, tagged with `gorm:"..."`. `db.Connect` runs `AutoMigrate` against every registered model on service startup — adding a field to a model is enough for additive schema changes. Column drops, renames, and data backfills aren't safe for AutoMigrate — write hand-checked SQL in `/backend/migrations` for those instead.
 - **Async jobs**: every job type is defined once in `/internal/queue/tasks.go` (payload struct + task name constant), consumed by exactly one worker. Always configure retry count + backoff explicitly per task — no task should silently retry forever or never retry.
 - **No dead code / no unwired features.** If an endpoint exists, it must have a caller. If a UI button or route is a placeholder, it must be labeled TODO with a tracking note, not shipped silently disconnected (this bit us in the old OptiFlow codebase — folder rename/move/delete existed server-side but had no UI wiring for months).
 - **Tests**: table-driven Go tests, `_test.go` alongside source. Integration tests that touch Postgres/Redis/MinIO run against docker-compose services in CI, not mocks, where feasible.
-- **Migrations**: never edit a migration that has been merged to `main`; always add a new one.
+- **Migrations**: never edit a hand-written migration in `/backend/migrations` that has been merged to `main`; always add a new one.
 
 ## Commands
 
 ```bash
-# local dev stack (Postgres, Redis, MinIO, asynqmon)
+# local dev stack (Postgres, Redis, MinIO) — ports offset from defaults, see deploy/compose/docker-compose.yaml
 docker compose -f deploy/compose/docker-compose.yaml up -d
 
-# run a service locally
+# run a service locally (from /backend)
 go run ./cmd/api-svc
 
-# generate sqlc code after editing queries
-sqlc generate
-
-# create a new migration
-migrate create -ext sql -dir migrations -seq <name>
-
-# run migrations
-migrate -path migrations -database "$DATABASE_URL" up
+# schema changes: add/edit a GORM struct in /internal/models, AutoMigrate runs on service startup.
+# for drops/renames/backfills, hand-write SQL in /backend/migrations instead.
 
 # lint / vet / test
 golangci-lint run ./...
@@ -101,7 +95,7 @@ go test ./... -race -cover
 - When adding a new async job type, always add: task struct in `/internal/queue`, handler in the correct worker's `main.go` or a dedicated `handlers.go`, retry/backoff config, and a Prometheus counter for success/failure.
 - When adding a new endpoint, add it to the relevant service only (don't put upload logic in `api-svc`, don't put metadata logic in `upload-svc`).
 - When touching video/image processing, assume ffmpeg/imaging calls are slow and must run inside a worker via the queue — never inline in an HTTP handler.
-- Prefer explicit, typed SQL (`sqlc`) over adding an ORM.
+- Use GORM structs in `/internal/models` as the schema source of truth; don't hand-write raw SQL query structs for CRUD paths GORM already covers well.
 - Update `plan.md`'s roadmap section if a phase's scope materially changes.
 - Flag (don't silently fix) any place where a feature looks half-wired — surface it rather than guessing intent.
 
