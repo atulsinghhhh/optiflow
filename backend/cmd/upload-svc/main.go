@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
+	"github.com/hibiken/asynq"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
@@ -44,7 +45,10 @@ func main() {
 		log.Fatal().Err(err).Msg("connecting to minio")
 	}
 
-	h := &handler{db: gormDB, storage: storageClient}
+	queueClient := asynq.NewClient(asynq.RedisClientOpt{Addr: cfg.RedisAddr})
+	defer queueClient.Close()
+
+	h := &handler{db: gormDB, storage: storageClient, queue: queueClient}
 
 	r := chi.NewRouter()
 	r.Use(chimw.RequestID)
@@ -81,6 +85,7 @@ type config struct {
 	MinioSecretKey string
 	MinioUseSSL    bool
 	MinioBucket    string
+	RedisAddr      string
 }
 
 func loadConfig() (config, error) {
@@ -116,6 +121,11 @@ func loadConfig() (config, error) {
 
 	useSSL, _ := strconv.ParseBool(os.Getenv("MINIO_USE_SSL"))
 
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		return config{}, fmt.Errorf("REDIS_ADDR is required")
+	}
+
 	port := os.Getenv("UPLOAD_SVC_PORT")
 	if port == "" {
 		port = "8083"
@@ -130,5 +140,6 @@ func loadConfig() (config, error) {
 		MinioSecretKey: secretKey,
 		MinioUseSSL:    useSSL,
 		MinioBucket:    bucket,
+		RedisAddr:      redisAddr,
 	}, nil
 }

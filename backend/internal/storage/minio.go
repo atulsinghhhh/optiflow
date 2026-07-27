@@ -4,6 +4,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/url"
 	"time"
 
@@ -74,6 +75,26 @@ func (c *Client) StatObject(ctx context.Context, objectKey string) (minio.Object
 		return minio.ObjectInfo{}, fmt.Errorf("statting object %q: %w", objectKey, err)
 	}
 	return info, nil
+}
+
+// GetObject opens the object for server-side reading — used by workers that need
+// the actual bytes (e.g. image-worker decoding a thumbnail source), not a URL.
+func (c *Client) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
+	obj, err := c.mc.GetObject(ctx, c.Bucket, objectKey, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("getting object %q: %w", objectKey, err)
+	}
+	return obj, nil
+}
+
+// PutObject uploads bytes server-side — used by workers writing derived objects
+// (e.g. a generated thumbnail), as opposed to the presigned-URL path clients use.
+func (c *Client) PutObject(ctx context.Context, objectKey string, reader io.Reader, size int64, contentType string) error {
+	_, err := c.mc.PutObject(ctx, c.Bucket, objectKey, reader, size, minio.PutObjectOptions{ContentType: contentType})
+	if err != nil {
+		return fmt.Errorf("putting object %q: %w", objectKey, err)
+	}
+	return nil
 }
 
 // RemoveObject deletes the object from the bucket.

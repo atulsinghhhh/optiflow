@@ -5,16 +5,19 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/hibiken/asynq"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 
 	"github.com/atulsinghhhh/optiflow/internal/httpx"
 	"github.com/atulsinghhhh/optiflow/internal/middleware"
 	"github.com/atulsinghhhh/optiflow/internal/models"
+	"github.com/atulsinghhhh/optiflow/internal/queue"
 	"github.com/atulsinghhhh/optiflow/internal/storage"
 )
 
@@ -23,6 +26,7 @@ const presignExpiry = 15 * time.Minute
 type handler struct {
 	db      *gorm.DB
 	storage *storage.Client
+	queue   *asynq.Client
 }
 
 type presignRequest struct {
@@ -133,11 +137,32 @@ func (h *handler) complete(w http.ResponseWriter, r *http.Request) {
 
 	// Trust MinIO's observed size over whatever the client declared at presign time.
 	file.SizeBytes = info.Size
-	file.Status = models.FileStatusReady
+
+	isImage := strings.HasPrefix(file.MimeType, "image/")
+	if isImage {
+		file.Status = models.FileStatusProcessing
+	} else {
+		file.Status = models.FileStatusReady
+	}
+
 	if err := h.db.Save(&file).Error; err != nil {
-		log.Error().Err(err).Msg("marking file ready")
+		log.Error().Err(err).Msg("marking file uploaded")
 		httpx.WriteError(w, http.StatusInternalServerError, "could not complete upload")
 		return
+	}
+
+	if isImage {
+		task, err := queue.NewImageThumbnailTask(queue.ImageThumbnailPayload{
+			FileID:     file.ID,
+			StorageKey: file.StorageKey,
+		})
+		if err != nil {
+			log.Error().Err(err).Msg("building image thumbnail task")
+		} else if _, err := h.queue.Enqueue(task); err != nil {
+			// The upload itself succeeded — don't fail the request over a queueing
+			// hiccup, but surface it loudly since the file will be stuck "processing".
+			log.Error().Err(err).Str("file_id", file.ID.String()).Msg("enqueueing image thumbnail task")
+		}
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, file)
