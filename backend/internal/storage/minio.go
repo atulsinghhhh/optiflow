@@ -1,0 +1,85 @@
+// Package storage wraps the MinIO client used for object storage.
+package storage
+
+import (
+	"context"
+	"fmt"
+	"net/url"
+	"time"
+
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
+)
+
+type Client struct {
+	mc     *minio.Client
+	Bucket string
+}
+
+type Config struct {
+	Endpoint  string
+	AccessKey string
+	SecretKey string
+	UseSSL    bool
+	Bucket    string
+}
+
+func NewClient(ctx context.Context, cfg Config) (*Client, error) {
+	mc, err := minio.New(cfg.Endpoint, &minio.Options{
+		Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
+		Secure: cfg.UseSSL,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating minio client: %w", err)
+	}
+
+	exists, err := mc.BucketExists(ctx, cfg.Bucket)
+	if err != nil {
+		return nil, fmt.Errorf("checking bucket %q: %w", cfg.Bucket, err)
+	}
+	if !exists {
+		if err := mc.MakeBucket(ctx, cfg.Bucket, minio.MakeBucketOptions{}); err != nil {
+			return nil, fmt.Errorf("creating bucket %q: %w", cfg.Bucket, err)
+		}
+	}
+
+	return &Client{mc: mc, Bucket: cfg.Bucket}, nil
+}
+
+// PresignedPutURL returns a URL the caller can PUT the object's bytes to directly,
+// bypassing the app server entirely.
+func (c *Client) PresignedPutURL(ctx context.Context, objectKey string, expiry time.Duration) (*url.URL, error) {
+	u, err := c.mc.PresignedPutObject(ctx, c.Bucket, objectKey, expiry)
+	if err != nil {
+		return nil, fmt.Errorf("presigning put url: %w", err)
+	}
+	return u, nil
+}
+
+// PresignedGetURL returns a time-limited URL for downloading/previewing the object.
+func (c *Client) PresignedGetURL(ctx context.Context, objectKey string, expiry time.Duration) (*url.URL, error) {
+	u, err := c.mc.PresignedGetObject(ctx, c.Bucket, objectKey, expiry, url.Values{})
+	if err != nil {
+		return nil, fmt.Errorf("presigning get url: %w", err)
+	}
+	return u, nil
+}
+
+// StatObject confirms the object actually exists in the bucket — used to verify an
+// upload really landed before marking a File record ready, rather than trusting the
+// client's say-so.
+func (c *Client) StatObject(ctx context.Context, objectKey string) (minio.ObjectInfo, error) {
+	info, err := c.mc.StatObject(ctx, c.Bucket, objectKey, minio.StatObjectOptions{})
+	if err != nil {
+		return minio.ObjectInfo{}, fmt.Errorf("statting object %q: %w", objectKey, err)
+	}
+	return info, nil
+}
+
+// RemoveObject deletes the object from the bucket.
+func (c *Client) RemoveObject(ctx context.Context, objectKey string) error {
+	if err := c.mc.RemoveObject(ctx, c.Bucket, objectKey, minio.RemoveObjectOptions{}); err != nil {
+		return fmt.Errorf("removing object %q: %w", objectKey, err)
+	}
+	return nil
+}

@@ -5,7 +5,7 @@
 
 StreamVault is a file & video upload, storage, sharing, and streaming-preview platform. It's a from-scratch rewrite of the original OptiFlow (Next.js + Prisma monolith) into a **Go multi-service backend paired with a Next.js frontend**. See [`plan.md`](./plan.md) for the full architecture and v1/v2/v3 roadmap, and [`claude.md`](./claude.md) for engineering conventions.
 
-> **Status:** the Next.js frontend below is the original, fully working OptiFlow app — it has not been switched over to the Go backend yet and still talks to its own Next.js API routes / Prisma / MinIO directly. On the Go backend, `auth-svc` (signup/login/JWT refresh) and `api-svc` (folders + file metadata, JWT-protected) are implemented and tested end-to-end against real Postgres. `upload-svc`, `notify-svc`, `image-worker`, `video-worker` are still scaffolds exposing only `/healthz` — file bytes never reach `api-svc`; actual upload/storage is `upload-svc`'s job once it's built.
+> **Status:** the Next.js frontend below is the original, fully working OptiFlow app — it has not been switched over to the Go backend yet and still talks to its own Next.js API routes / Prisma / MinIO directly. On the Go backend, `auth-svc` (signup/login/JWT refresh), `api-svc` (folders + file metadata, JWT-protected), and `upload-svc` (presigned direct-to-MinIO upload) are implemented and tested end-to-end against real Postgres + MinIO. `notify-svc`, `image-worker`, `video-worker` are still scaffolds exposing only `/healthz`.
 
 ## 📦 Repo Structure
 
@@ -145,12 +145,13 @@ npm run worker   # background worker (thumbnail generation)
 docker compose -f deploy/compose/docker-compose.yaml up -d
 
 cd backend
-cp cmd/auth-svc/.env.example cmd/auth-svc/.env   # then edit JWT_SECRET
-cp cmd/api-svc/.env.example cmd/api-svc/.env     # JWT_SECRET must match auth-svc's — same tokens, both services validate them
+cp cmd/auth-svc/.env.example cmd/auth-svc/.env       # then edit JWT_SECRET
+cp cmd/api-svc/.env.example cmd/api-svc/.env         # JWT_SECRET must match auth-svc's — same tokens, all services validate them
+cp cmd/upload-svc/.env.example cmd/upload-svc/.env   # same JWT_SECRET again; MINIO_* defaults already match deploy/compose
 
 go run ./cmd/auth-svc     # :8081 — signup/login/refresh, JWT access+refresh, GORM AutoMigrate on startup
 go run ./cmd/api-svc      # :8082 — folders + file metadata, JWT-protected, GORM AutoMigrate on startup
-go run ./cmd/upload-svc   # :8083/healthz (scaffold)
+go run ./cmd/upload-svc   # :8083 — presigned direct-to-MinIO upload, JWT-protected, GORM AutoMigrate on startup
 go run ./cmd/notify-svc   # :8084/healthz (scaffold)
 
 # build / vet / test everything
@@ -187,9 +188,21 @@ All routes below except `/healthz` require `Authorization: Bearer <access_token>
 | DELETE | `/files/{id}` | — | 204; metadata-only — doesn't touch MinIO, since nothing writes real object bytes yet |
 | GET | `/healthz` | — | 200 `ok`, no auth required |
 
-There's no `POST /files` — file rows are meant to be created by `upload-svc` once an upload actually completes, not by `api-svc`. Until `upload-svc` exists, nothing in this repo creates a `File` row.
+There's no `POST /files` — file rows are only created by `upload-svc`, below.
 
-`upload-svc`, `notify-svc` only expose `/healthz` so far. `image-worker`/`video-worker` are no-op stubs pending the `asynq` queue integration (Phase v1, see `plan.md`).
+### upload-svc endpoints (implemented)
+
+Direct-to-MinIO upload, per `claude.md`'s rule against buffering file bytes through an HTTP handler — the app server never sees the file's contents. Both routes require `Authorization: Bearer <access_token>`.
+
+| Method | Path | Body | Notes |
+|---|---|---|---|
+| POST | `/uploads/presign` | `{name, size_bytes, mime_type, folder_id?}` | 201 + `{file_id, upload_url, expires_at}`; creates a `File` row with `status: pending`; `upload_url` is a MinIO presigned PUT valid for 15 minutes |
+| POST | `/uploads/{id}/complete` | — | 200 + updated file; verifies the object actually landed in MinIO via `StatObject` before flipping `status` to `ready` (client-reported completion isn't trusted); 400 if the object isn't there, 409 if already completed |
+| GET | `/healthz` | — | 200 `ok`, no auth required |
+
+Client flow: `POST /uploads/presign` → `PUT` the file's bytes straight to `upload_url` → `POST /uploads/{id}/complete`. If a client presigns and never uploads, the `File` row is left at `status: pending` indefinitely — there's no cleanup job for abandoned uploads yet (a `v2`-ish hardening gap, not currently tracked in `plan.md`).
+
+`notify-svc` only exposes `/healthz` so far. `image-worker`/`video-worker` are no-op stubs pending the `asynq` queue integration (Phase v1, see `plan.md`).
 
 ## 🖼️ Thumbnail Generation (frontend, current)
 
