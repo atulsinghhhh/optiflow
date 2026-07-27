@@ -57,5 +57,14 @@
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
     "typescript": "^5"
+  },
+  "allowScripts": {
+    "@prisma/engines@7.4.2": true,
+    "esbuild@0.27.3": true,
+    "fsevents@2.3.3": true,
+    "msw@2.12.10": true,
+    "prisma@7.4.2": true,
+    "sharp@0.34.5": true,
+    "unrs-resolver@1.11.1": true
   }
 }

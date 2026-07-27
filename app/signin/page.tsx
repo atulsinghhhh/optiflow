@@ -4,40 +4,43 @@ import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
-import { GitHubIcon } from "@/components/ui/sign-in-flow-1";
-import { CanvasRevealEffect } from "@/components/ui/sign-in-flow-1";
+import { ArrowLeft, Check } from "lucide-react";
 
-interface SignInPageProps {
-    className?: string;
-}
+const GitHubIcon = () => (
+    <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 shrink-0">
+        <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
+    </svg>
+);
 
+const Spinner = ({ dark = false }: { dark?: boolean }) => (
+    <svg className={`animate-spin w-4 h-4 ${dark ? "text-white" : "text-[#0A2540]"}`} viewBox="0 0 24 24" fill="none">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+    </svg>
+);
 
-const SignInPage = ({ className }: SignInPageProps) => {
+const inputCls =
+    "w-full bg-white text-[#0A2540] placeholder-slate-400 border border-slate-200 " +
+    "rounded-lg py-2.5 px-4 text-sm focus:outline-none focus:border-[#635BFF] " +
+    "focus:ring-2 focus:ring-[#635BFF]/20 transition-all duration-200";
+
+const SignInPage = () => {
     const router = useRouter();
 
-    // form state
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isGitHubLoading, setIsGitHubLoading] = useState(false);
-
-    // canvas reveal animation state
     const [step, setStep] = useState<"form" | "success">("form");
-    const [initialCanvasVisible, setInitialCanvasVisible] = useState(true);
-    const [reverseCanvasVisible, setReverseCanvasVisible] = useState(false);
 
-    // ── GitHub OAuth ─────────────────────────────────────────────────────────────
     const handleGitHub = async () => {
         setIsGitHubLoading(true);
         setError(null);
         await signIn("github", { callbackUrl: "/dashboard" });
-        // browser will redirect; no need to set loading back
     };
 
-    // ── Email + Password ──────────────────────────────────────────────────────────
     const handleCredentials = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(null);
@@ -53,198 +56,144 @@ const SignInPage = ({ className }: SignInPageProps) => {
             setError("Invalid email or password. Please try again.");
             setIsLoading(false);
         } else {
-            // Trigger success animation, then redirect
-            setReverseCanvasVisible(true);
-            setTimeout(() => setInitialCanvasVisible(false), 50);
-            setTimeout(() => {
-                setStep("success");
-                setTimeout(() => router.push("/dashboard"), 1200);
-            }, 1800);
+            setStep("success");
+            setTimeout(() => router.push("/dashboard"), 1000);
         }
     };
 
     return (
-        <div className={cn("flex w-full flex-col min-h-screen bg-[#0F172A] relative", className)}>
-            {/* ── Canvas Background ───────────────────────────────────────────── */}
-            <div className="absolute inset-0 z-0">
-                {initialCanvasVisible && (
-                    <div className="absolute inset-0">
-                        <CanvasRevealEffect
-                            animationSpeed={3}
-                            containerClassName="bg-black"
-                            colors={[[255, 255, 255], [255, 255, 255]]}
-                            dotSize={6}
-                            reverse={false}
-                        />
-                    </div>
-                )}
-                {reverseCanvasVisible && (
-                    <div className="absolute inset-0">
-                        <CanvasRevealEffect
-                            animationSpeed={4}
-                            containerClassName="bg-black"
-                            colors={[[255, 255, 255], [255, 255, 255]]}
-                            dotSize={6}
-                            reverse={true}
-                        />
-                    </div>
-                )}
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(0,0,0,0.9)_0%,_transparent_100%)]" />
-                <div className="absolute top-0 left-0 right-0 h-1/3 bg-gradient-to-b from-black to-transparent" />
+        <div className="relative flex min-h-screen flex-col items-center justify-center bg-white px-4 py-16 overflow-hidden">
+            {/* gradient mesh background, consistent with landing page */}
+            <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+                <div className="absolute -top-32 left-1/4 w-[30rem] h-[30rem] rounded-full bg-[#635BFF] opacity-15 blur-[120px]" />
+                <div className="absolute -bottom-32 right-1/4 w-[26rem] h-[26rem] rounded-full bg-[#00A3FF] opacity-15 blur-[120px]" />
             </div>
 
-            {/* ── Content ─────────────────────────────────────────────────────── */}
-            <div className="relative z-10 flex flex-col flex-1">
+            <Link
+                href="/"
+                className="absolute top-6 left-6 flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-[#0A2540] transition-colors"
+            >
+                <ArrowLeft className="w-4 h-4" />
+                Back to home
+            </Link>
 
-                <div className="flex flex-1 items-center justify-center px-4">
-                    <div className="w-full max-w-sm mt-[80px]">
-                        <AnimatePresence mode="wait">
-                            {step === "form" ? (
-                                <motion.div
-                                    key="form"
-                                    initial={{ opacity: 0, y: 20 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0, y: -20 }}
-                                    transition={{ duration: 0.4, ease: "easeOut" }}
-                                    className="space-y-6"
+            <div className="w-full max-w-sm">
+                <div className="rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-200/50 p-8">
+                    <AnimatePresence mode="wait">
+                        {step === "form" ? (
+                            <motion.div
+                                key="form"
+                                initial={{ opacity: 0, y: 12 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -12 }}
+                                transition={{ duration: 0.3, ease: "easeOut" }}
+                                className="space-y-6"
+                            >
+                                <div className="text-center space-y-1">
+                                    <h1 className="text-2xl font-semibold tracking-tight text-[#0A2540]">Welcome back</h1>
+                                    <p className="text-slate-500 text-sm">Sign in to your OptiFlow account</p>
+                                </div>
+
+                                <button
+                                    onClick={handleGitHub}
+                                    disabled={isGitHubLoading || isLoading}
+                                    className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-50
+                             text-[#0A2540] border border-slate-200 rounded-lg py-2.5 px-4
+                             transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
                                 >
-                                    {/* Heading */}
-                                    <div className="text-center space-y-1">
-                                        <h1 className="text-4xl font-bold tracking-tight text-white">Welcome back</h1>
-                                        <p className="text-white/50 text-lg font-light">Sign in to OptiFlow</p>
-                                    </div>
+                                    {isGitHubLoading ? <Spinner /> : <GitHubIcon />}
+                                    Continue with GitHub
+                                </button>
 
-                                    {/* GitHub Button */}
-                                    <button
-                                        onClick={handleGitHub}
-                                        disabled={isGitHubLoading || isLoading}
-                                        className="w-full flex items-center justify-center gap-3 bg-white/5 hover:bg-white/10 
-                               text-white border border-white/15 rounded-xl py-3 px-4 
-                               transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
-                               hover:border-white/30 active:scale-[0.98]"
-                                    >
-                                        {isGitHubLoading ? (
-                                            <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none">
-                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                                            </svg>
-                                        ) : (
-                                            <GitHubIcon />
-                                        )}
-                                        <span className="text-sm font-medium">Continue with GitHub</span>
-                                    </button>
+                                <div className="flex items-center gap-4">
+                                    <div className="h-px bg-slate-200 flex-1" />
+                                    <span className="text-slate-400 text-xs uppercase tracking-wider">or</span>
+                                    <div className="h-px bg-slate-200 flex-1" />
+                                </div>
 
-                                    {/* Divider */}
-                                    <div className="flex items-center gap-4">
-                                        <div className="h-px bg-white/10 flex-1" />
-                                        <span className="text-white/30 text-xs uppercase tracking-wider">or</span>
-                                        <div className="h-px bg-white/10 flex-1" />
-                                    </div>
-
-                                    {/* Email + Password Form */}
-                                    <form onSubmit={handleCredentials} className="space-y-3">
-                                        {error && (
-                                            <motion.div
-                                                initial={{ opacity: 0, scale: 0.95 }}
-                                                animate={{ opacity: 1, scale: 1 }}
-                                                className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-center"
-                                            >
-                                                {error}
-                                            </motion.div>
-                                        )}
-
-                                        <div>
-                                            <input
-                                                type="email"
-                                                placeholder="Email address"
-                                                value={email}
-                                                onChange={(e) => setEmail(e.target.value)}
-                                                required
-                                                autoComplete="email"
-                                                className="w-full bg-white/5 text-white placeholder-white/30 border border-white/10
-                                   rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-white/30
-                                   focus:bg-white/8 transition-all duration-200"
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <input
-                                                type="password"
-                                                placeholder="Password"
-                                                value={password}
-                                                onChange={(e) => setPassword(e.target.value)}
-                                                required
-                                                autoComplete="current-password"
-                                                className="w-full bg-white/5 text-white placeholder-white/30 border border-white/10
-                                   rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-white/30
-                                   focus:bg-white/8 transition-all duration-200"
-                                            />
-                                        </div>
-
-                                        <motion.button
-                                            type="submit"
-                                            disabled={isLoading || isGitHubLoading || !email || !password}
-                                            whileHover={{ scale: 1.01 }}
-                                            whileTap={{ scale: 0.98 }}
-                                            className="w-full flex items-center justify-center gap-2 rounded-xl bg-white 
-                                 text-black font-semibold py-3 text-sm
-                                 hover:bg-white/90 transition-all duration-200
-                                 disabled:opacity-40 disabled:cursor-not-allowed disabled:scale-100"
+                                <form onSubmit={handleCredentials} className="space-y-3">
+                                    {error && (
+                                        <motion.div
+                                            initial={{ opacity: 0, scale: 0.95 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-4 py-3 text-center"
                                         >
-                                            {isLoading ? (
-                                                <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                                                </svg>
-                                            ) : "Sign In"}
-                                        </motion.button>
-                                    </form>
+                                            {error}
+                                        </motion.div>
+                                    )}
 
-                                    {/* Footer */}
-                                    <p className="text-center text-sm text-white/40">
-                                        Don&#39;t have an account?{" "}
-                                        <Link href="/sign-up" className="text-white/70 hover:text-white transition-colors underline underline-offset-4">
-                                            Sign up
-                                        </Link>
-                                    </p>
+                                    <input
+                                        type="email"
+                                        placeholder="Email address"
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                        required
+                                        autoComplete="email"
+                                        className={inputCls}
+                                    />
 
-                                    <p className="text-xs text-white/25 text-center leading-relaxed">
-                                        By continuing, you agree to our{" "}
-                                        <Link href="#" className="underline hover:text-white/40 transition-colors">Terms</Link>
-                                        {" "}and{" "}
-                                        <Link href="#" className="underline hover:text-white/40 transition-colors">Privacy Policy</Link>.
-                                    </p>
-                                </motion.div>
-                            ) : (
-                                /* ── Success State ─────────────────────────────────────── */
-                                <motion.div
-                                    key="success"
-                                    initial={{ opacity: 0, scale: 0.9 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    transition={{ duration: 0.5, ease: "easeOut" }}
-                                    className="space-y-6 text-center"
-                                >
-                                    <div className="space-y-1">
-                                        <h1 className="text-4xl font-bold tracking-tight text-white">You&#39;re in!</h1>
-                                        <p className="text-white/50 text-lg font-light">Redirecting to dashboard…</p>
-                                    </div>
-                                    <motion.div
-                                        initial={{ scale: 0.7, opacity: 0 }}
-                                        animate={{ scale: 1, opacity: 1 }}
-                                        transition={{ duration: 0.5, delay: 0.2 }}
-                                        className="py-8"
+                                    <input
+                                        type="password"
+                                        placeholder="Password"
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        required
+                                        autoComplete="current-password"
+                                        className={inputCls}
+                                    />
+
+                                    <motion.button
+                                        type="submit"
+                                        disabled={isLoading || isGitHubLoading || !email || !password}
+                                        whileHover={{ scale: 1.01 }}
+                                        whileTap={{ scale: 0.98 }}
+                                        className="w-full flex items-center justify-center gap-2 rounded-full bg-[#0A2540]
+                                 text-white font-semibold py-2.5 text-sm
+                                 hover:bg-[#0A2540]/90 transition-all duration-200
+                                 disabled:opacity-40 disabled:cursor-not-allowed disabled:scale-100"
                                     >
-                                        <div className="mx-auto w-16 h-16 rounded-full bg-gradient-to-br from-white to-white/70 flex items-center justify-center">
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-black" viewBox="0 0 20 20" fill="currentColor">
-                                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                            </svg>
-                                        </div>
-                                    </motion.div>
+                                        {isLoading ? <Spinner dark /> : "Sign in"}
+                                    </motion.button>
+                                </form>
+
+                                <p className="text-center text-sm text-slate-500">
+                                    Don&#39;t have an account?{" "}
+                                    <Link href="/sign-up" className="text-[#635BFF] font-medium hover:underline">
+                                        Sign up
+                                    </Link>
+                                </p>
+                            </motion.div>
+                        ) : (
+                            <motion.div
+                                key="success"
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                transition={{ duration: 0.4, ease: "easeOut" }}
+                                className="space-y-6 text-center py-4"
+                            >
+                                <motion.div
+                                    initial={{ scale: 0.7, opacity: 0 }}
+                                    animate={{ scale: 1, opacity: 1 }}
+                                    transition={{ duration: 0.4, delay: 0.1 }}
+                                    className="mx-auto w-14 h-14 rounded-full bg-[#00B287]/10 flex items-center justify-center"
+                                >
+                                    <Check className="w-7 h-7 text-[#00B287]" />
                                 </motion.div>
-                            )}
-                        </AnimatePresence>
-                    </div>
+                                <div className="space-y-1">
+                                    <h1 className="text-2xl font-semibold tracking-tight text-[#0A2540]">You&#39;re in!</h1>
+                                    <p className="text-slate-500 text-sm">Redirecting to dashboard…</p>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </div>
+
+                <p className="text-xs text-slate-400 text-center leading-relaxed mt-6">
+                    By continuing, you agree to our{" "}
+                    <Link href="#" className="underline hover:text-slate-600 transition-colors">Terms</Link>
+                    {" "}and{" "}
+                    <Link href="#" className="underline hover:text-slate-600 transition-colors">Privacy Policy</Link>.
+                </p>
             </div>
         </div>
     );
