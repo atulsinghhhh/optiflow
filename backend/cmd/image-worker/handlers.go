@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/disintegration/imaging"
+	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -15,6 +16,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/atulsinghhhh/optiflow/internal/models"
+	"github.com/atulsinghhhh/optiflow/internal/notify"
 	"github.com/atulsinghhhh/optiflow/internal/queue"
 	"github.com/atulsinghhhh/optiflow/internal/storage"
 )
@@ -32,6 +34,29 @@ var jobsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 type handler struct {
 	db      *gorm.DB
 	storage *storage.Client
+	notify  *notify.Client // nil if notify-svc isn't configured — notifications are best-effort
+}
+
+// notifyUser looks up the file's owner and pushes a notification. A no-op if
+// notify-svc isn't configured; failures here are logged, never propagated —
+// a notification isn't worth failing an already-completed job over.
+func (h *handler) notifyUser(ctx context.Context, fileID uuid.UUID, notifType models.NotificationType, title, messageFmt string) {
+	if h.notify == nil {
+		return
+	}
+	var file models.File
+	if err := h.db.Select("user_id", "name").First(&file, "id = ?", fileID).Error; err != nil {
+		log.Error().Err(err).Str("file_id", fileID.String()).Msg("looking up file for notification")
+		return
+	}
+	if err := h.notify.Push(ctx, notify.PushRequest{
+		UserID:  file.UserID,
+		Type:    string(notifType),
+		Title:   title,
+		Message: fmt.Sprintf(messageFmt, file.Name),
+	}); err != nil {
+		log.Error().Err(err).Str("file_id", fileID.String()).Msg("pushing notification")
+	}
 }
 
 func (h *handler) handleImageThumbnail(ctx context.Context, t *asynq.Task) error {
@@ -78,6 +103,7 @@ func (h *handler) handleImageThumbnail(ctx context.Context, t *asynq.Task) error
 
 	jobsTotal.WithLabelValues("success").Inc()
 	log.Info().Str("file_id", payload.FileID.String()).Str("thumbnail_key", thumbnailKey).Msg("generated thumbnail")
+	h.notifyUser(ctx, payload.FileID, models.NotificationTypeStorage, "Thumbnail ready", "Your thumbnail for %q is ready.")
 	return nil
 }
 
@@ -112,4 +138,6 @@ func (h *handler) handleTaskError(ctx context.Context, task *asynq.Task, err err
 	if updErr := h.db.Model(&models.File{}).Where("id = ?", payload.FileID).Update("status", models.FileStatusFailed).Error; updErr != nil {
 		log.Error().Err(updErr).Str("file_id", payload.FileID.String()).Msg("marking file failed after exhausted retries")
 	}
+
+	h.notifyUser(ctx, payload.FileID, models.NotificationTypeStorage, "Processing failed", "We couldn't generate a thumbnail for %q.")
 }

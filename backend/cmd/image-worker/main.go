@@ -15,6 +15,7 @@ import (
 
 	"github.com/atulsinghhhh/optiflow/internal/db"
 	"github.com/atulsinghhhh/optiflow/internal/models"
+	"github.com/atulsinghhhh/optiflow/internal/notify"
 	"github.com/atulsinghhhh/optiflow/internal/queue"
 	"github.com/atulsinghhhh/optiflow/internal/storage"
 )
@@ -44,7 +45,14 @@ func main() {
 		log.Fatal().Err(err).Msg("connecting to minio")
 	}
 
-	h := &handler{db: gormDB, storage: storageClient}
+	var notifyClient *notify.Client
+	if cfg.NotifySvcURL != "" {
+		notifyClient = notify.NewClient(cfg.NotifySvcURL, cfg.InternalSecret)
+	} else {
+		log.Warn().Msg("NOTIFY_SVC_URL not set — job completion notifications disabled")
+	}
+
+	h := &handler{db: gormDB, storage: storageClient, notify: notifyClient}
 
 	go func() {
 		mux := http.NewServeMux()
@@ -88,6 +96,8 @@ type config struct {
 	RedisAddr      string
 	MetricsPort    string
 	Concurrency    int
+	NotifySvcURL   string
+	InternalSecret string
 }
 
 func loadConfig() (config, error) {
@@ -143,5 +153,9 @@ func loadConfig() (config, error) {
 		RedisAddr:      redisAddr,
 		MetricsPort:    metricsPort,
 		Concurrency:    concurrency,
+		// Optional: leave NOTIFY_SVC_URL unset to run without job-completion
+		// notifications (e.g. notify-svc isn't deployed yet).
+		NotifySvcURL:   os.Getenv("NOTIFY_SVC_URL"),
+		InternalSecret: os.Getenv("INTERNAL_SECRET"),
 	}, nil
 }
