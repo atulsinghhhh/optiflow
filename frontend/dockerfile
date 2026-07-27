@@ -25,10 +25,6 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
-# Custom generator output (app/generated/prisma) is gitignored and not
-# produced automatically — it must be generated explicitly before build.
-RUN npx prisma generate
-
 RUN npm run build
 
 # Production image, copy all the files and run next
