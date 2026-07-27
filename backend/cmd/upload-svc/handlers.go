@@ -139,7 +139,8 @@ func (h *handler) complete(w http.ResponseWriter, r *http.Request) {
 	file.SizeBytes = info.Size
 
 	isImage := strings.HasPrefix(file.MimeType, "image/")
-	if isImage {
+	isVideo := strings.HasPrefix(file.MimeType, "video/")
+	if isImage || isVideo {
 		file.Status = models.FileStatusProcessing
 	} else {
 		file.Status = models.FileStatusReady
@@ -151,19 +152,33 @@ func (h *handler) complete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if isImage {
+	switch {
+	case isImage:
 		task, err := queue.NewImageThumbnailTask(queue.ImageThumbnailPayload{
 			FileID:     file.ID,
 			StorageKey: file.StorageKey,
 		})
-		if err != nil {
-			log.Error().Err(err).Msg("building image thumbnail task")
-		} else if _, err := h.queue.Enqueue(task); err != nil {
-			// The upload itself succeeded — don't fail the request over a queueing
-			// hiccup, but surface it loudly since the file will be stuck "processing".
-			log.Error().Err(err).Str("file_id", file.ID.String()).Msg("enqueueing image thumbnail task")
-		}
+		h.enqueueOrLog(task, err, "image thumbnail", file.ID)
+	case isVideo:
+		task, err := queue.NewVideoTranscodeTask(queue.VideoTranscodePayload{
+			FileID:     file.ID,
+			StorageKey: file.StorageKey,
+		})
+		h.enqueueOrLog(task, err, "video transcode", file.ID)
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, file)
+}
+
+// enqueueOrLog enqueues a processing task, logging failures loudly rather than
+// failing the request — the upload itself already succeeded, but a queueing
+// hiccup here means the file will be stuck at status=processing indefinitely.
+func (h *handler) enqueueOrLog(task *asynq.Task, buildErr error, jobName string, fileID uuid.UUID) {
+	if buildErr != nil {
+		log.Error().Err(buildErr).Str("job", jobName).Msg("building task")
+		return
+	}
+	if _, err := h.queue.Enqueue(task); err != nil {
+		log.Error().Err(err).Str("job", jobName).Str("file_id", fileID.String()).Msg("enqueueing task")
+	}
 }

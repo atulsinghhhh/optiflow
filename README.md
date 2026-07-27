@@ -5,21 +5,21 @@
 
 StreamVault is a file & video upload, storage, sharing, and streaming-preview platform. It's a from-scratch rewrite of the original OptiFlow (Next.js + Prisma monolith) into a **Go multi-service backend paired with a Next.js frontend**. See [`plan.md`](./plan.md) for the full architecture and v1/v2/v3 roadmap, and [`claude.md`](./claude.md) for engineering conventions.
 
-> **Status:** the Next.js frontend below is the original, fully working OptiFlow app — it has not been switched over to the Go backend yet and still talks to its own Next.js API routes / Prisma / MinIO directly. On the Go backend, `auth-svc` (signup/login/JWT refresh), `api-svc` (folders + file metadata, JWT-protected), `upload-svc` (presigned direct-to-MinIO upload), and `image-worker` (asynq-driven thumbnail generation) are implemented and tested end-to-end against real Postgres + MinIO + Redis. `notify-svc` and `video-worker` are still scaffolds exposing only `/healthz`.
+> **Status:** the Next.js frontend below is the original, fully working OptiFlow app — it has not been switched over to the Go backend yet and still talks to its own Next.js API routes / Prisma / MinIO directly. On the Go backend, `auth-svc` (signup/login/JWT refresh), `api-svc` (folders + file metadata, JWT-protected), `upload-svc` (presigned direct-to-MinIO upload), `image-worker` (asynq-driven thumbnail generation), and `video-worker` (ffmpeg → adaptive HLS) are implemented and tested end-to-end against real Postgres + MinIO + Redis. `notify-svc` is still a scaffold exposing only `/healthz`.
 
 ## 📦 Repo Structure
 
 This is a monorepo: Go backend and Next.js frontend live in separate top-level trees.
 
 ```text
-/backend            # Go services (scaffold stage — see plan.md Phase v1)
+/backend            # Go services — see plan.md Phase v1
   /cmd
-    /auth-svc        # :8081
-    /api-svc         # :8082
-    /upload-svc      # :8083
-    /notify-svc      # :8084
-    /image-worker
-    /video-worker
+    /auth-svc        # :8081 — implemented
+    /api-svc         # :8082 — implemented
+    /upload-svc      # :8083 — implemented
+    /notify-svc      # :8084 — scaffold (/healthz only)
+    /image-worker    # :9091/metrics — implemented
+    /video-worker    # :9092/metrics — implemented
   /internal          # auth (JWT/bcrypt), storage, queue, db (GORM connection), models (GORM structs), middleware
   /migrations        # hand-written SQL for schema changes AutoMigrate can't express (drops, renames, backfills)
   go.mod
@@ -144,16 +144,21 @@ npm run worker   # background worker (thumbnail generation)
 # and any locally-installed Postgres/Redis — don't run both compose files at once regardless.
 docker compose -f deploy/compose/docker-compose.yaml up -d
 
+# video-worker shells out to ffmpeg/ffprobe — install them first (e.g. `brew install ffmpeg`)
+which ffmpeg ffprobe
+
 cd backend
 cp cmd/auth-svc/.env.example cmd/auth-svc/.env       # then edit JWT_SECRET
 cp cmd/api-svc/.env.example cmd/api-svc/.env         # JWT_SECRET must match auth-svc's — same tokens, all services validate them
 cp cmd/upload-svc/.env.example cmd/upload-svc/.env   # same JWT_SECRET again; MINIO_*/REDIS_ADDR defaults already match deploy/compose
 cp cmd/image-worker/.env.example cmd/image-worker/.env
+cp cmd/video-worker/.env.example cmd/video-worker/.env
 
 go run ./cmd/auth-svc     # :8081 — signup/login/refresh, JWT access+refresh, GORM AutoMigrate on startup
 go run ./cmd/api-svc      # :8082 — folders + file metadata, JWT-protected, GORM AutoMigrate on startup
 go run ./cmd/upload-svc   # :8083 — presigned direct-to-MinIO upload, JWT-protected, GORM AutoMigrate on startup
 go run ./cmd/image-worker # :9091/metrics — consumes image:thumbnail jobs from Redis, no HTTP API
+go run ./cmd/video-worker # :9092/metrics — consumes video:transcode jobs from Redis, no HTTP API
 go run ./cmd/notify-svc   # :8084/healthz (scaffold)
 
 # build / vet / test everything
@@ -210,9 +215,25 @@ Consumes `image:thumbnail` jobs from Redis via `asynq` — no HTTP API, just a `
 - **Terminal failure**: only marked `status: failed` once retries are actually exhausted (or immediately for a `SkipRetry` failure) — not on every individual failed attempt, since an earlier attempt failing doesn't mean the job is done retrying.
 - **Metrics**: `image_worker_jobs_total{status="success"|"failure"}` counter on `:9091/metrics`.
 
+### video-worker (implemented)
+
+Consumes `video:transcode` jobs the same way — Redis via `asynq`, `/healthz` + `/metrics` on `:9092`, no HTTP API. Shells out to `ffmpeg`/`ffprobe` (`os/exec`), so both must be on `PATH`. For each job:
+
+1. Downloads the original to a local temp file (ffmpeg needs seekable file I/O for multi-output HLS, not a stream).
+2. Probes source width/height/duration via `ffprobe`.
+3. Grabs a poster frame at `min(1s, duration/2)`.
+4. Transcodes an HLS rendition (h264/aac, 6s segments, VOD playlist) for every rung in the bitrate ladder (`360p`@800k, `720p`@2800k, `1080p`@5000k) **that doesn't exceed the source's height** — upscaling past source resolution wastes bandwidth for no quality gain. A source shorter than 360p still gets exactly one native-resolution rendition instead of zero.
+5. Builds and uploads an `EXT-X-STREAM-INF` master playlist (`hls/<file_id>/master.m3u8`) referencing each variant's real `BANDWIDTH`/`RESOLUTION`, uploads the poster (`hls/<file_id>/poster.jpg`) and every variant playlist + `.ts` segment, and updates the `File` row: `thumbnail_key` (poster), `playlist_key` (master), `status: ready`.
+
+- **Retry policy**: only 2 attempts (vs. image-worker's 5) and a 30-minute timeout — retrying an expensive multi-rendition transcode 5x over isn't worth it. Same `asynq.SkipRetry` treatment for unrecoverable errors (e.g. `ffprobe` can't read the file at all).
+- **Concurrency**: defaults to 2 (vs. image-worker's 5) — transcoding is CPU-heavy; a handful of concurrent jobs can peg a dev machine.
+- **Metrics**: `video_worker_jobs_total{status="success"|"failure"}` counter on `:9092/metrics`.
+
+Client playback: point `hls.js` (or Safari's native HLS) at the presigned/public URL for `playlist_key`.
+
 Client flow: `POST /uploads/presign` → `PUT` the file's bytes straight to `upload_url` → `POST /uploads/{id}/complete`. If a client presigns and never uploads, the `File` row is left at `status: pending` indefinitely — there's no cleanup job for abandoned uploads yet (a `v2`-ish hardening gap, not currently tracked in `plan.md`).
 
-`notify-svc` and `video-worker` are still `/healthz`-only stubs (Phase v1, see `plan.md`).
+`notify-svc` is still a `/healthz`-only stub (Phase v1, see `plan.md`).
 
 ## 🖼️ Thumbnail Generation (frontend, current)
 

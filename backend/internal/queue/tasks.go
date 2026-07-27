@@ -1,5 +1,3 @@
-// Package queue defines asynq task payloads and task name constants.
-// Every job type is defined exactly once here; each is consumed by exactly one worker.
 package queue
 
 import (
@@ -27,4 +25,23 @@ func NewImageThumbnailTask(payload ImageThumbnailPayload) (*asynq.Task, error) {
 		return nil, fmt.Errorf("marshaling image thumbnail payload: %w", err)
 	}
 	return asynq.NewTask(TypeImageThumbnail, b, asynq.MaxRetry(5), asynq.Timeout(2*time.Minute)), nil
+}
+
+const TypeVideoTranscode = "video:transcode"
+
+type VideoTranscodePayload struct {
+	FileID     uuid.UUID `json:"file_id"`
+	StorageKey string    `json:"storage_key"`
+}
+
+// NewVideoTranscodeTask builds the video:transcode task, consumed by video-worker.
+// Lower MaxRetry and a much longer Timeout than image:thumbnail — a transcode can
+// legitimately take minutes, and retrying an expensive multi-rendition ffmpeg run
+// 5 times over would waste worker capacity for very little benefit.
+func NewVideoTranscodeTask(payload VideoTranscodePayload) (*asynq.Task, error) {
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling video transcode payload: %w", err)
+	}
+	return asynq.NewTask(TypeVideoTranscode, b, asynq.MaxRetry(2), asynq.Timeout(30*time.Minute)), nil
 }
