@@ -242,29 +242,17 @@ func (h *handler) deleteFolder(w http.ResponseWriter, r *http.Request) {
 // file, all within a single transaction so a partial failure can't leave orphans.
 func (h *handler) deleteFolderRecursive(userID, folderID uuid.UUID) error {
 	return h.db.Transaction(func(tx *gorm.DB) error {
-		var children []models.Folder
-		if err := tx.Where("user_id = ? AND parent_id = ?", userID, folderID).Find(&children).Error; err != nil {
-			return err
-		}
-		for _, child := range children {
-			if err := h.deleteFolderRecursiveTx(tx, userID, child.ID); err != nil {
-				return err
-			}
-		}
-		if err := tx.Where("user_id = ? AND folder_id = ?", userID, folderID).Delete(&models.File{}).Error; err != nil {
-			return err
-		}
-		return tx.Where("id = ? AND user_id = ?", folderID, userID).Delete(&models.Folder{}).Error
+		return deleteFolderTree(tx, userID, folderID)
 	})
 }
 
-func (h *handler) deleteFolderRecursiveTx(tx *gorm.DB, userID, folderID uuid.UUID) error {
+func deleteFolderTree(tx *gorm.DB, userID, folderID uuid.UUID) error {
 	var children []models.Folder
 	if err := tx.Where("user_id = ? AND parent_id = ?", userID, folderID).Find(&children).Error; err != nil {
 		return err
 	}
 	for _, child := range children {
-		if err := h.deleteFolderRecursiveTx(tx, userID, child.ID); err != nil {
+		if err := deleteFolderTree(tx, userID, child.ID); err != nil {
 			return err
 		}
 	}

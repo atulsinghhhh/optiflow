@@ -5,7 +5,7 @@
 
 StreamVault is a file & video upload, storage, sharing, and streaming-preview platform. It's a from-scratch rewrite of the original OptiFlow (Next.js + Prisma monolith) into a **Go multi-service backend paired with a Next.js frontend**. See [`plan.md`](./plan.md) for the full architecture and v1/v2/v3 roadmap, and [`claude.md`](./claude.md) for engineering conventions.
 
-> **Status:** the Next.js frontend below is the original, fully working OptiFlow app — it has not been switched over to the Go backend yet and still talks to its own Next.js API routes / Prisma / MinIO directly. On the Go backend, `auth-svc` is implemented and tested end-to-end (signup, login, JWT access+refresh, GORM-backed Postgres). `api-svc`, `upload-svc`, `notify-svc`, `image-worker`, `video-worker` are still scaffolds exposing only `/healthz`.
+> **Status:** the Next.js frontend below is the original, fully working OptiFlow app — it has not been switched over to the Go backend yet and still talks to its own Next.js API routes / Prisma / MinIO directly. On the Go backend, `auth-svc` (signup/login/JWT refresh) and `api-svc` (folders + file metadata, JWT-protected) are implemented and tested end-to-end against real Postgres. `upload-svc`, `notify-svc`, `image-worker`, `video-worker` are still scaffolds exposing only `/healthz` — file bytes never reach `api-svc`; actual upload/storage is `upload-svc`'s job once it's built.
 
 ## 📦 Repo Structure
 
@@ -146,10 +146,10 @@ docker compose -f deploy/compose/docker-compose.yaml up -d
 
 cd backend
 cp cmd/auth-svc/.env.example cmd/auth-svc/.env   # then edit JWT_SECRET
-export $(cat cmd/auth-svc/.env | xargs)
+cp cmd/api-svc/.env.example cmd/api-svc/.env     # JWT_SECRET must match auth-svc's — same tokens, both services validate them
 
 go run ./cmd/auth-svc     # :8081 — signup/login/refresh, JWT access+refresh, GORM AutoMigrate on startup
-go run ./cmd/api-svc      # :8082/healthz (scaffold)
+go run ./cmd/api-svc      # :8082 — folders + file metadata, JWT-protected, GORM AutoMigrate on startup
 go run ./cmd/upload-svc   # :8083/healthz (scaffold)
 go run ./cmd/notify-svc   # :8084/healthz (scaffold)
 
@@ -170,7 +170,26 @@ go test ./... -race -cover
 
 Access tokens expire in 15 minutes, refresh tokens in 7 days (`internal/auth/jwt.go`). Passwords are bcrypt-hashed (`internal/auth/password.go`). The `users` table schema lives in `internal/models/user.go` and is applied via `GORM AutoMigrate` on every `auth-svc` startup.
 
-`api-svc`, `upload-svc`, `notify-svc` only expose `/healthz` so far. `image-worker`/`video-worker` are no-op stubs pending the `asynq` queue integration (Phase v1, see `plan.md`).
+### api-svc endpoints (implemented)
+
+All routes below except `/healthz` require `Authorization: Bearer <access_token>` from `auth-svc`; every query is scoped to the token's user — there's no cross-user access.
+
+| Method | Path | Body / Query | Notes |
+|---|---|---|---|
+| POST | `/folders/` | `{name, parent_id?}` | 201, 400 if `parent_id` doesn't belong to you |
+| GET | `/folders/?parent_id=` | — | lists folders under `parent_id` (root if omitted) |
+| GET | `/folders/{id}` | — | folder + its immediate child folders and files, 404 if not yours |
+| PATCH | `/folders/{id}` | `{name?, parent_id?}` | rename and/or move; rejects moving a folder into itself or a descendant (400) |
+| DELETE | `/folders/{id}` | — | 204; cascades to all descendant folders and files, transactional |
+| GET | `/files/?folder_id=` | — | lists files in `folder_id` (root if omitted) |
+| GET | `/files/{id}` | — | 404 if not yours |
+| PATCH | `/files/{id}` | `{name?, folder_id?}` | rename and/or move |
+| DELETE | `/files/{id}` | — | 204; metadata-only — doesn't touch MinIO, since nothing writes real object bytes yet |
+| GET | `/healthz` | — | 200 `ok`, no auth required |
+
+There's no `POST /files` — file rows are meant to be created by `upload-svc` once an upload actually completes, not by `api-svc`. Until `upload-svc` exists, nothing in this repo creates a `File` row.
+
+`upload-svc`, `notify-svc` only expose `/healthz` so far. `image-worker`/`video-worker` are no-op stubs pending the `asynq` queue integration (Phase v1, see `plan.md`).
 
 ## 🖼️ Thumbnail Generation (frontend, current)
 

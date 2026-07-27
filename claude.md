@@ -45,7 +45,8 @@ This is a monorepo containing both the Go backend and the Next.js frontend, kept
     /events      # NATS publish/subscribe helpers (v2+)
     /db          # GORM connection + AutoMigrate wiring
     /models      # GORM structs — shared domain types, schema source of truth
-    /middleware  # rate limiting, auth, logging, request-id, circuit breakers (v2+)
+    /middleware  # rate limiting, auth (JWT), logging, request-id, circuit breakers (v2+)
+    /httpx       # shared HTTP response helpers (WriteJSON/WriteError) — every service uses these, never duplicates them
   /migrations    # hand-written SQL for destructive/data changes GORM AutoMigrate can't express
 /frontend
   /app           # Next.js App Router pages

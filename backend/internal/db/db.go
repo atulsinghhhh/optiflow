@@ -8,7 +8,6 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-
 func Connect(dsn string, models ...any) (*gorm.DB, error) {
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Warn),
