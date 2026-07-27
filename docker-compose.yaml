@@ -33,7 +33,7 @@ services:
       - redis_data:/data
   web:
     build:
-      context: .
+      context: ./frontend
       dockerfile: dockerfile
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
