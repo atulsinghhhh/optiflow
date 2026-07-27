@@ -229,6 +229,8 @@ Consumes `video:transcode` jobs the same way — Redis via `asynq`, `/healthz` +
 - **Concurrency**: defaults to 2 (vs. image-worker's 5) — transcoding is CPU-heavy; a handful of concurrent jobs can peg a dev machine.
 - **Metrics**: `video_worker_jobs_total{status="success"|"failure"}` counter on `:9092/metrics`.
 
+**Running without a local `ffmpeg` install**: `deploy/docker/video-worker.Dockerfile` bundles `ffmpeg`/`ffprobe` via Alpine's `apk` package, so you don't need them on your host — build with `docker build -f deploy/docker/video-worker.Dockerfile -t streamvault/video-worker backend` (build context is `backend/`) and run it on the same Docker network as `deploy/compose/docker-compose.yaml`'s stack (`--network compose_default`), pointing `DATABASE_URL`/`MINIO_ENDPOINT`/`REDIS_ADDR` at the compose **service names** (`db`, `storage`, `redis`), not the containers' `container_name` — `minio-go` rejects hostnames with underscores (e.g. `streamvault_storage`) as invalid, so the `container_name` values won't work here even though other tools resolve them fine.
+
 Client playback: point `hls.js` (or Safari's native HLS) at the presigned/public URL for `playlist_key`.
 
 Client flow: `POST /uploads/presign` → `PUT` the file's bytes straight to `upload_url` → `POST /uploads/{id}/complete`. If a client presigns and never uploads, the `File` row is left at `status: pending` indefinitely — there's no cleanup job for abandoned uploads yet (a `v2`-ish hardening gap, not currently tracked in `plan.md`).
