@@ -12,6 +12,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/atulsinghhhh/optiflow/internal/db"
+	"github.com/atulsinghhhh/optiflow/internal/models"
 )
 
 func main() {
@@ -23,7 +24,7 @@ func main() {
 		log.Fatal().Err(err).Msg("loading config")
 	}
 
-	gormDB, err := db.Connect(cfg.DatabaseURL)
+	gormDB, err := db.Connect(cfg.DatabaseURL, &models.User{})
 	if err != nil {
 		log.Fatal().Err(err).Msg("connecting to database")
 	}
