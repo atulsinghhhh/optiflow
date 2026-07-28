@@ -147,7 +147,7 @@ which ffmpeg ffprobe
 
 cd backend
 cp cmd/auth-svc/.env.example cmd/auth-svc/.env       # then edit JWT_SECRET
-cp cmd/api-svc/.env.example cmd/api-svc/.env         # JWT_SECRET must match auth-svc's — same tokens, all services validate them
+cp cmd/api-svc/.env.example cmd/api-svc/.env         # JWT_SECRET must match auth-svc's — same tokens, all services validate them; also needs MINIO_* (shares resolve presigned download URLs), defaults already match deploy/compose
 cp cmd/upload-svc/.env.example cmd/upload-svc/.env   # same JWT_SECRET again; MINIO_*/REDIS_ADDR defaults already match deploy/compose
 cp cmd/image-worker/.env.example cmd/image-worker/.env
 cp cmd/video-worker/.env.example cmd/video-worker/.env

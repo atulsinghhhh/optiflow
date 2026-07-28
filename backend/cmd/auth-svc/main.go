@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/atulsinghhhh/optiflow/internal/db"
+	authmw "github.com/atulsinghhhh/optiflow/internal/middleware"
 	"github.com/atulsinghhhh/optiflow/internal/models"
 )
 
@@ -38,7 +39,7 @@ func main() {
 	r.Use(middleware.Recoverer)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{cfg.FrontendOrigin},
-		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
+		AllowedMethods:   []string{"GET", "POST", "PATCH", "OPTIONS"},
 		AllowedHeaders:   []string{"Content-Type", "Authorization"},
 		AllowCredentials: false,
 		MaxAge:           300,
@@ -52,6 +53,12 @@ func main() {
 	r.Post("/signup", h.signup)
 	r.Post("/login", h.login)
 	r.Post("/refresh", h.refresh)
+
+	r.Group(func(r chi.Router) {
+		r.Use(authmw.RequireAuth([]byte(cfg.JWTSecret)))
+		r.Get("/me", h.getMe)
+		r.Patch("/me", h.updateMe)
+	})
 
 	addr := ":" + cfg.Port
 	log.Info().Str("addr", addr).Msg("auth-svc listening")

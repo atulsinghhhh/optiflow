@@ -13,10 +13,12 @@ import (
 	"github.com/atulsinghhhh/optiflow/internal/httpx"
 	"github.com/atulsinghhhh/optiflow/internal/middleware"
 	"github.com/atulsinghhhh/optiflow/internal/models"
+	"github.com/atulsinghhhh/optiflow/internal/storage"
 )
 
 type handler struct {
-	db *gorm.DB
+	db      *gorm.DB
+	storage *storage.Client
 }
 
 type folderRequest struct {

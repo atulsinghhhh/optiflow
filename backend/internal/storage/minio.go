@@ -104,3 +104,17 @@ func (c *Client) RemoveObject(ctx context.Context, objectKey string) error {
 	}
 	return nil
 }
+
+// ListObjects returns every object key under the given prefix — used to find
+// all the derived objects (HLS playlists/segments) belonging to a video so
+// they can be cleaned up together when the source file is deleted.
+func (c *Client) ListObjects(ctx context.Context, prefix string) ([]string, error) {
+	var keys []string
+	for obj := range c.mc.ListObjects(ctx, c.Bucket, minio.ListObjectsOptions{Prefix: prefix, Recursive: true}) {
+		if obj.Err != nil {
+			return nil, fmt.Errorf("listing objects with prefix %q: %w", prefix, obj.Err)
+		}
+		keys = append(keys, obj.Key)
+	}
+	return keys, nil
+}

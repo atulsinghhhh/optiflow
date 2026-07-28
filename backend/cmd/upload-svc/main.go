@@ -30,7 +30,7 @@ func main() {
 		log.Fatal().Err(err).Msg("loading config")
 	}
 
-	gormDB, err := db.Connect(cfg.DatabaseURL, &models.User{}, &models.Folder{}, &models.File{})
+	gormDB, err := db.Connect(cfg.DatabaseURL, &models.User{}, &models.Folder{}, &models.File{}, &models.Share{})
 	if err != nil {
 		log.Fatal().Err(err).Msg("connecting to database")
 	}
@@ -68,6 +68,9 @@ func main() {
 		w.Write([]byte("ok"))
 	})
 
+	// Public — resolving a share token deliberately requires no auth.
+	r.Post("/shares/{token}/download-url", h.shareDownloadURL)
+
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireAuth([]byte(cfg.JWTSecret)))
 
@@ -75,6 +78,7 @@ func main() {
 			r.Post("/presign", h.presign)
 			r.Post("/{id}/complete", h.complete)
 			r.Get("/{id}/download-url", h.downloadURL)
+			r.Get("/{id}/hls/*", h.hlsAsset)
 		})
 	})
 

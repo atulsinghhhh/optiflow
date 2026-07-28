@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -15,6 +17,7 @@ import (
 	"github.com/atulsinghhhh/optiflow/internal/db"
 	"github.com/atulsinghhhh/optiflow/internal/middleware"
 	"github.com/atulsinghhhh/optiflow/internal/models"
+	"github.com/atulsinghhhh/optiflow/internal/storage"
 )
 
 func main() {
@@ -26,12 +29,23 @@ func main() {
 		log.Fatal().Err(err).Msg("loading config")
 	}
 
-	gormDB, err := db.Connect(cfg.DatabaseURL, &models.User{}, &models.Folder{}, &models.File{})
+	gormDB, err := db.Connect(cfg.DatabaseURL, &models.User{}, &models.Folder{}, &models.File{}, &models.Share{})
 	if err != nil {
 		log.Fatal().Err(err).Msg("connecting to database")
 	}
 
-	h := &handler{db: gormDB}
+	storageClient, err := storage.NewClient(context.Background(), storage.Config{
+		Endpoint:  cfg.MinioEndpoint,
+		AccessKey: cfg.MinioAccessKey,
+		SecretKey: cfg.MinioSecretKey,
+		UseSSL:    cfg.MinioUseSSL,
+		Bucket:    cfg.MinioBucket,
+	})
+	if err != nil {
+		log.Fatal().Err(err).Msg("connecting to minio")
+	}
+
+	h := &handler{db: gormDB, storage: storageClient}
 
 	r := chi.NewRouter()
 	r.Use(chimw.RequestID)
@@ -50,6 +64,10 @@ func main() {
 		w.Write([]byte("ok"))
 	})
 
+	// Public — resolving a share token is the entire point of a share link, so
+	// this deliberately sits outside the RequireAuth group below.
+	r.Get("/shares/{token}", h.getPublicShare)
+
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireAuth([]byte(cfg.JWTSecret)))
 
@@ -63,9 +81,17 @@ func main() {
 
 		r.Route("/files", func(r chi.Router) {
 			r.Get("/", h.listFiles)
+			r.Get("/stats", h.fileStats)
 			r.Get("/{id}", h.getFile)
 			r.Patch("/{id}", h.updateFile)
 			r.Delete("/{id}", h.deleteFile)
+			r.Post("/{id}/shares", h.createShare)
+			r.Get("/{id}/shares", h.listFileShares)
+		})
+
+		r.Route("/shares", func(r chi.Router) {
+			r.Get("/", h.listShares)
+			r.Delete("/{id}", h.deleteShare)
 		})
 	})
 
@@ -81,6 +107,11 @@ type config struct {
 	DatabaseURL    string
 	JWTSecret      string
 	FrontendOrigin string
+	MinioEndpoint  string
+	MinioAccessKey string
+	MinioSecretKey string
+	MinioUseSSL    bool
+	MinioBucket    string
 }
 
 func loadConfig() (config, error) {
@@ -104,5 +135,37 @@ func loadConfig() (config, error) {
 		frontendOrigin = "http://localhost:3000"
 	}
 
-	return config{Port: port, DatabaseURL: dbURL, JWTSecret: secret, FrontendOrigin: frontendOrigin}, nil
+	endpoint := os.Getenv("MINIO_ENDPOINT")
+	if endpoint == "" {
+		return config{}, fmt.Errorf("MINIO_ENDPOINT is required")
+	}
+
+	accessKey := os.Getenv("MINIO_ACCESS_KEY")
+	if accessKey == "" {
+		return config{}, fmt.Errorf("MINIO_ACCESS_KEY is required")
+	}
+
+	secretKey := os.Getenv("MINIO_SECRET_KEY")
+	if secretKey == "" {
+		return config{}, fmt.Errorf("MINIO_SECRET_KEY is required")
+	}
+
+	bucket := os.Getenv("MINIO_BUCKET")
+	if bucket == "" {
+		bucket = "streamvault"
+	}
+
+	useSSL, _ := strconv.ParseBool(os.Getenv("MINIO_USE_SSL"))
+
+	return config{
+		Port:           port,
+		DatabaseURL:    dbURL,
+		JWTSecret:      secret,
+		FrontendOrigin: frontendOrigin,
+		MinioEndpoint:  endpoint,
+		MinioAccessKey: accessKey,
+		MinioSecretKey: secretKey,
+		MinioUseSSL:    useSSL,
+		MinioBucket:    bucket,
+	}, nil
 }

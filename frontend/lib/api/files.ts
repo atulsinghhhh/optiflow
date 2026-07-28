@@ -43,3 +43,17 @@ export async function updateFile(
 export async function deleteFile(id: string): Promise<void> {
     await apiClient.delete(`/files/${id}`);
 }
+
+export type FileStats = {
+    total_files: number;
+    total_bytes: number;
+    status_counts: Record<string, number>;
+    type_counts: Record<string, number>;
+};
+
+// Account-wide aggregation across every folder — unlike listFiles, which only
+// lists a single folder level at a time.
+export async function getFileStats(): Promise<FileStats> {
+    const res = await apiClient.get<FileStats>("/files/stats");
+    return res.data;
+}

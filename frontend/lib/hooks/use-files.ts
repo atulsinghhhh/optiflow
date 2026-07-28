@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { deleteFile, getFile, listFiles, updateFile, type FileRecord } from "@/lib/api/files";
+import { deleteFile, getFile, getFileStats, listFiles, updateFile, type FileRecord } from "@/lib/api/files";
 import { getDownloadUrl } from "@/lib/api/uploads";
 
 const filesKey = (folderId?: string) => ["files", folderId ?? "root"] as const;
@@ -45,6 +45,13 @@ export function useDeleteFile() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["files"] });
         },
+    });
+}
+
+export function useFileStats() {
+    return useQuery({
+        queryKey: ["files", "stats"],
+        queryFn: getFileStats,
     });
 }
 

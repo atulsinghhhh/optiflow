@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
+	"gorm.io/gorm"
 
 	"github.com/atulsinghhhh/optiflow/internal/httpx"
 	"github.com/atulsinghhhh/optiflow/internal/middleware"
@@ -122,9 +125,10 @@ func (h *handler) updateFile(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, file)
 }
 
-// deleteFile removes the file's metadata row. It does not delete the underlying
-// MinIO object — upload-svc/object lifecycle management isn't wired up yet
-// (Phase v1, see plan.md), so deletes here are metadata-only for now.
+// deleteFile removes the file's metadata row, its share links, and best-effort
+// cleans up its MinIO object(s). Storage cleanup failures are logged loudly
+// but never block the delete — a stray orphaned object is recoverable later,
+// a file the user can't delete because of a storage hiccup is not.
 func (h *handler) deleteFile(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserIDFromContext(r.Context())
 
@@ -134,16 +138,48 @@ func (h *handler) deleteFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := h.resolveOwnedFile(userID, id); err != nil {
+	file, err := h.resolveOwnedFile(userID, id)
+	if err != nil {
 		httpx.WriteError(w, http.StatusNotFound, "file not found")
 		return
 	}
 
-	if err := h.db.Where("id = ? AND user_id = ?", id, userID).Delete(&models.File{}).Error; err != nil {
+	if err := h.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("file_id = ? AND user_id = ?", id, userID).Delete(&models.Share{}).Error; err != nil {
+			return fmt.Errorf("deleting shares: %w", err)
+		}
+		return tx.Where("id = ? AND user_id = ?", id, userID).Delete(&models.File{}).Error
+	}); err != nil {
 		log.Error().Err(err).Msg("deleting file")
 		httpx.WriteError(w, http.StatusInternalServerError, "could not delete file")
 		return
 	}
 
+	h.cleanupFileObjects(r.Context(), file)
+
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// cleanupFileObjects removes every MinIO object associated with a file: the
+// original, its thumbnail/poster, and — for videos — the entire hls/{id}/
+// prefix of playlists and segments.
+func (h *handler) cleanupFileObjects(ctx context.Context, file models.File) {
+	keys := []string{file.StorageKey}
+	if file.ThumbnailKey != nil {
+		keys = append(keys, *file.ThumbnailKey)
+	}
+	if file.PlaylistKey != nil {
+		hlsKeys, err := h.storage.ListObjects(ctx, fmt.Sprintf("hls/%s/", file.ID))
+		if err != nil {
+			log.Error().Err(err).Str("file_id", file.ID.String()).Msg("listing hls objects for cleanup")
+		} else {
+			keys = append(keys, hlsKeys...)
+		}
+	}
+
+	for _, key := range keys {
+		if err := h.storage.RemoveObject(ctx, key); err != nil {
+			log.Error().Err(err).Str("file_id", file.ID.String()).Str("key", key).Msg("removing storage object")
+		}
+	}
 }

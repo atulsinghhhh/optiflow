@@ -18,6 +18,7 @@
     "date-fns": "^4.1.0",
     "framer-motion": "^12.35.2",
     "fs": "^0.0.1-security",
+    "hls.js": "^1.6.16",
     "lucide-react": "^0.577.0",
     "nanoid": "^5.1.6",
     "next": "16.1.6",

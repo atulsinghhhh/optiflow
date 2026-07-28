@@ -30,6 +30,8 @@ import { motion, AnimatePresence } from "framer-motion";
 
 import { NotificationsPopover } from "@/components/notifications-popover";
 import { UploadDialog } from "@/components/files/upload-dialog";
+import { ShareDialog } from "@/components/files/share-dialog";
+import { VideoPlayerDialog } from "@/components/files/video-player-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -166,6 +168,8 @@ function FileManager() {
 
     const [renameFile, setRenameFile] = useState<{ id: string; name: string } | null>(null);
     const [deleteFileId, setDeleteFileId] = useState<string | null>(null);
+    const [shareFile, setShareFile] = useState<{ id: string; name: string } | null>(null);
+    const [playFile, setPlayFile] = useState<{ id: string; name: string } | null>(null);
 
     const handleCreateFolder = () => {
         if (!newFolderName.trim()) return;
@@ -477,6 +481,11 @@ function FileManager() {
                                             <DropdownMenuContent align="end" className="w-56">
                                                 <DropdownMenuLabel>File Options</DropdownMenuLabel>
                                                 <DropdownMenuSeparator />
+                                                {file.mime_type.startsWith("video/") && file.playlist_key && (
+                                                    <DropdownMenuItem onClick={() => setPlayFile({ id: file.id, name: file.name })}>
+                                                        <Video size={14} /> Play
+                                                    </DropdownMenuItem>
+                                                )}
                                                 <DropdownMenuItem
                                                     disabled={file.status !== "ready"}
                                                     onClick={() => handleDownload(file.id)}
@@ -487,11 +496,10 @@ function FileManager() {
                                                     <Edit2 size={14} /> Rename
                                                 </DropdownMenuItem>
                                                 <DropdownMenuItem
-                                                    disabled
-                                                    title="Sharing isn't available yet"
-                                                    className="opacity-60"
+                                                    disabled={file.status !== "ready"}
+                                                    onClick={() => setShareFile({ id: file.id, name: file.name })}
                                                 >
-                                                    <Share2 size={14} /> Create Share Link (soon)
+                                                    <Share2 size={14} /> Create Share Link
                                                 </DropdownMenuItem>
                                                 <DropdownMenuSeparator />
                                                 <DropdownMenuItem variant="destructive" onClick={() => setDeleteFileId(file.id)}>
@@ -642,6 +650,20 @@ function FileManager() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <ShareDialog
+                open={!!shareFile}
+                onOpenChange={(open) => !open && setShareFile(null)}
+                fileId={shareFile?.id ?? null}
+                fileName={shareFile?.name ?? ""}
+            />
+
+            <VideoPlayerDialog
+                open={!!playFile}
+                onOpenChange={(open) => !open && setPlayFile(null)}
+                fileId={playFile?.id ?? null}
+                fileName={playFile?.name ?? ""}
+            />
         </div>
     );
 }

@@ -2,7 +2,6 @@
 
 import * as React from "react"
 import { Menu as MenuPrimitive } from "@base-ui/react/menu"
-import { Slot } from "@radix-ui/react-slot"
 
 import { cn } from "@/lib/utils"
 import { ChevronRightIcon, CheckIcon } from "lucide-react"
@@ -15,9 +14,31 @@ function DropdownMenuPortal({ ...props }: MenuPrimitive.Portal.Props) {
   return <MenuPrimitive.Portal data-slot="dropdown-menu-portal" {...props} />
 }
 
-function DropdownMenuTrigger({ asChild, ...props }: MenuPrimitive.Trigger.Props & { asChild?: boolean }) {
-  const Comp = asChild ? Slot : MenuPrimitive.Trigger
-  return <Comp data-slot="dropdown-menu-trigger" {...(asChild ? props : { ...props, asChild }) as any} />
+// `asChild` mirrors Radix's convention, but this is base-ui: the actual
+// open/close behavior lives on MenuPrimitive.Trigger itself, so `asChild`
+// must be implemented via base-ui's own `render` prop (which merges the
+// trigger's props/handlers onto the given element) — not by swapping in an
+// unrelated @radix-ui/react-slot `Slot`, which renders a plain clone with
+// none of that wiring and made every dropdown trigger in the app inert.
+function DropdownMenuTrigger({
+  asChild,
+  children,
+  ...props
+}: MenuPrimitive.Trigger.Props & { asChild?: boolean }) {
+  if (asChild) {
+    return (
+      <MenuPrimitive.Trigger
+        data-slot="dropdown-menu-trigger"
+        render={children as React.ReactElement}
+        {...props}
+      />
+    )
+  }
+  return (
+    <MenuPrimitive.Trigger data-slot="dropdown-menu-trigger" {...props}>
+      {children}
+    </MenuPrimitive.Trigger>
+  )
 }
 
 function DropdownMenuContent({
@@ -62,16 +83,23 @@ function DropdownMenuLabel({
 }: MenuPrimitive.GroupLabel.Props & {
   inset?: boolean
 }) {
+  // base-ui's GroupLabel throws ("MenuGroupRootContext is missing") unless
+  // it has a Menu.Group ancestor — unlike Radix, where Label stands alone.
+  // Consumers just want a standalone label (not a labeled group of items),
+  // so the wrapper is added here rather than requiring every call site to
+  // know about base-ui's grouping requirement.
   return (
-    <MenuPrimitive.GroupLabel
-      data-slot="dropdown-menu-label"
-      data-inset={inset}
-      className={cn(
-        "px-1.5 py-1 text-xs font-medium text-muted-foreground data-inset:pl-7",
-        className
-      )}
-      {...props}
-    />
+    <MenuPrimitive.Group>
+      <MenuPrimitive.GroupLabel
+        data-slot="dropdown-menu-label"
+        data-inset={inset}
+        className={cn(
+          "px-1.5 py-1 text-xs font-medium text-muted-foreground data-inset:pl-7",
+          className
+        )}
+        {...props}
+      />
+    </MenuPrimitive.Group>
   )
 }
 

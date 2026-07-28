@@ -5,11 +5,13 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 
 	"github.com/atulsinghhhh/optiflow/internal/auth"
 	"github.com/atulsinghhhh/optiflow/internal/httpx"
+	"github.com/atulsinghhhh/optiflow/internal/middleware"
 	"github.com/atulsinghhhh/optiflow/internal/models"
 )
 
@@ -144,4 +146,69 @@ func (h *handler) refresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, tokenResponse{AccessToken: access})
+}
+
+type meResponse struct {
+	ID    uuid.UUID `json:"id"`
+	Email string    `json:"email"`
+	Name  string    `json:"name"`
+}
+
+type updateMeRequest struct {
+	Name string `json:"name"`
+}
+
+// getMe exists because the JWT the frontend holds only carries a user_id
+// claim — auth-svc never issues the user's name/email inside the token — so
+// this is the only way the frontend can show real profile data instead of
+// deriving it (badly) from the session.
+func (h *handler) getMe(w http.ResponseWriter, r *http.Request) {
+	userID, _ := middleware.UserIDFromContext(r.Context())
+
+	var user models.User
+	if err := h.db.First(&user, "id = ?", userID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			httpx.WriteError(w, http.StatusNotFound, "user not found")
+			return
+		}
+		log.Error().Err(err).Msg("looking up current user")
+		httpx.WriteError(w, http.StatusInternalServerError, "could not load profile")
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, meResponse{ID: user.ID, Email: user.Email, Name: user.Name})
+}
+
+func (h *handler) updateMe(w http.ResponseWriter, r *http.Request) {
+	userID, _ := middleware.UserIDFromContext(r.Context())
+
+	var req updateMeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Name == "" {
+		httpx.WriteError(w, http.StatusBadRequest, "name cannot be empty")
+		return
+	}
+
+	var user models.User
+	if err := h.db.First(&user, "id = ?", userID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			httpx.WriteError(w, http.StatusNotFound, "user not found")
+			return
+		}
+		log.Error().Err(err).Msg("looking up current user")
+		httpx.WriteError(w, http.StatusInternalServerError, "could not update profile")
+		return
+	}
+
+	user.Name = req.Name
+	if err := h.db.Save(&user).Error; err != nil {
+		log.Error().Err(err).Msg("updating current user")
+		httpx.WriteError(w, http.StatusInternalServerError, "could not update profile")
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, meResponse{ID: user.ID, Email: user.Email, Name: user.Name})
 }

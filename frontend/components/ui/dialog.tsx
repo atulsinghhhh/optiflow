@@ -2,7 +2,6 @@
 
 import * as React from "react"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
-import { Slot } from "@radix-ui/react-slot"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -12,9 +11,29 @@ function Dialog({ ...props }: DialogPrimitive.Root.Props) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
 }
 
-function DialogTrigger({ asChild, ...props }: DialogPrimitive.Trigger.Props & { asChild?: boolean }) {
-  const Comp = asChild ? Slot : DialogPrimitive.Trigger
-  return <Comp data-slot="dialog-trigger" {...(asChild ? props : { ...props, asChild }) as any} />
+// See DropdownMenuTrigger's comment: `asChild` has to go through base-ui's
+// own `render` prop, not @radix-ui/react-slot's `Slot` — swapping in `Slot`
+// renders a static clone with none of DialogPrimitive.Trigger's open-on-click
+// wiring, so the trigger would silently do nothing.
+function DialogTrigger({
+  asChild,
+  children,
+  ...props
+}: DialogPrimitive.Trigger.Props & { asChild?: boolean }) {
+  if (asChild) {
+    return (
+      <DialogPrimitive.Trigger
+        data-slot="dialog-trigger"
+        render={children as React.ReactElement}
+        {...props}
+      />
+    )
+  }
+  return (
+    <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props}>
+      {children}
+    </DialogPrimitive.Trigger>
+  )
 }
 
 function DialogPortal({ ...props }: DialogPrimitive.Portal.Props) {

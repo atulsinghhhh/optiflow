@@ -17,8 +17,8 @@ import {
     CartesianGrid,
 } from "recharts";
 
-import { useFiles } from "@/lib/hooks/use-files";
-import type { FileRecord, FileStatus } from "@/lib/api/files";
+import { useFileStats } from "@/lib/hooks/use-files";
+import type { FileStatus } from "@/lib/api/files";
 
 const CHART_COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"];
 
@@ -30,14 +30,6 @@ function formatBytes(bytes: number) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
 
-function categorize(mimeType: string): string {
-    if (mimeType.startsWith("image/")) return "Images";
-    if (mimeType.startsWith("video/")) return "Video";
-    if (mimeType.startsWith("audio/")) return "Audio";
-    if (mimeType.includes("pdf") || mimeType.includes("word") || mimeType.includes("document")) return "Documents";
-    return "Other";
-}
-
 const STATUS_LABELS: Record<FileStatus, string> = {
     pending: "Pending",
     processing: "Processing",
@@ -46,33 +38,24 @@ const STATUS_LABELS: Record<FileStatus, string> = {
 };
 
 export default function DashboardPage() {
-    // api-svc has no recursive "all files" endpoint — only single-level listing
-    // by folder_id. Rather than N+1 walk the folder tree client-side, this
-    // shows root-level stats only, labeled honestly. A proper account-wide
-    // total needs a small backend aggregation endpoint (tracked in plan.md).
-    const { data: files = [], isLoading } = useFiles(undefined);
+    // Backed by api-svc's GET /files/stats, which aggregates across the whole
+    // account (every folder), not just the root level.
+    const { data: rawStats, isLoading } = useFileStats();
 
     const stats = useMemo(() => {
-        const totalBytes = files.reduce((sum: number, f: FileRecord) => sum + f.size_bytes, 0);
-
-        const statusCounts = new Map<FileStatus, number>();
-        const typeCounts = new Map<string, number>();
-        for (const file of files) {
-            statusCounts.set(file.status, (statusCounts.get(file.status) ?? 0) + 1);
-            const category = categorize(file.mime_type);
-            typeCounts.set(category, (typeCounts.get(category) ?? 0) + 1);
-        }
+        const statusCounts = rawStats?.status_counts ?? {};
+        const typeCounts = rawStats?.type_counts ?? {};
 
         return {
-            totalFiles: files.length,
-            totalBytes,
-            statusData: Array.from(statusCounts.entries()).map(([status, count]) => ({
-                name: STATUS_LABELS[status],
+            totalFiles: rawStats?.total_files ?? 0,
+            totalBytes: rawStats?.total_bytes ?? 0,
+            statusData: Object.entries(statusCounts).map(([status, count]) => ({
+                name: STATUS_LABELS[status as FileStatus] ?? status,
                 count,
             })),
-            typeData: Array.from(typeCounts.entries()).map(([name, value]) => ({ name, value })),
+            typeData: Object.entries(typeCounts).map(([name, value]) => ({ name, value })),
         };
-    }, [files]);
+    }, [rawStats]);
 
     if (isLoading) {
         return (
@@ -88,7 +71,7 @@ export default function DashboardPage() {
             <div className="flex items-end justify-between">
                 <div>
                     <h1 className="text-4xl font-extrabold tracking-tight mb-2">Dashboard Overview</h1>
-                    <p className="text-muted-foreground text-lg">Files in your root folder — nested folders aren&apos;t counted here yet.</p>
+                    <p className="text-muted-foreground text-lg">Every file across your account, in every folder.</p>
                 </div>
             </div>
 
@@ -96,7 +79,7 @@ export default function DashboardPage() {
                 <Card className="border-border/50 bg-card/60 overflow-hidden relative">
                     <div className="absolute right-0 top-0 w-32 h-32 bg-primary/10 rounded-full blur-3xl -mr-10 -mt-10" />
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">Storage Used (root)</CardTitle>
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Storage Used</CardTitle>
                         <HardDrive className="h-5 w-5 text-primary" />
                     </CardHeader>
                     <CardContent>
@@ -108,12 +91,12 @@ export default function DashboardPage() {
                 <Card className="border-border/50 bg-card/60 overflow-hidden relative">
                     <div className="absolute right-0 top-0 w-32 h-32 bg-accent/10 rounded-full blur-3xl -mr-10 -mt-10" />
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">Total Files (root)</CardTitle>
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Total Files</CardTitle>
                         <FileText className="h-5 w-5 text-accent" />
                     </CardHeader>
                     <CardContent>
                         <div className="text-3xl font-bold">{stats.totalFiles}</div>
-                        <p className="text-xs text-muted-foreground mt-1">At the top level of your library</p>
+                        <p className="text-xs text-muted-foreground mt-1">Across your whole account</p>
                     </CardContent>
                 </Card>
             </div>
@@ -125,7 +108,7 @@ export default function DashboardPage() {
                             <UploadCloud size={20} className="text-primary" />
                             Processing Status
                         </CardTitle>
-                        <CardDescription>Where your root-level files currently stand in the pipeline.</CardDescription>
+                        <CardDescription>Where your files currently stand in the pipeline.</CardDescription>
                     </CardHeader>
                     <CardContent className="h-[300px]">
                         {stats.statusData.length === 0 ? (

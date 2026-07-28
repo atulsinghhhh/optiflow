@@ -34,7 +34,7 @@ export default async function DashboardLayout({ children, }: { children: React.R
                         {[
                             { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
                             { href: "/dashboard/files", label: "My Files", icon: FolderOpen },
-                            { href: "/dashboard/shared", label: "Shared with me", icon: Users2 },
+                            { href: "/dashboard/shared", label: "Share Links", icon: Users2 },
                             { href: "/dashboard/profile", label: "Profile", icon: User },
                         ].map((item) => (
                             <Link

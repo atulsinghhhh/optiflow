@@ -19,6 +19,25 @@ declare module "next-auth" {
     }
 }
 
+type MeResponse = { id: string; email: string; name: string };
+
+// auth-svc's /login response carries no user profile info at all — only
+// tokens — so the display name shown everywhere in the app (sidebar, avatar
+// fallback, profile page) has to come from a follow-up call to /me using the
+// token we just got back. Without this, session.user.name is always empty.
+async function fetchName(accessToken: string): Promise<string | undefined> {
+    try {
+        const res = await fetch(`${AUTH_SVC_URL}/me`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (!res.ok) return undefined;
+        const me: MeResponse = await res.json();
+        return me.name;
+    } catch {
+        return undefined;
+    }
+}
+
 const signInSchema = z.object({
     email: z.string().email("Invalid email address"),
     password: z.string().min(6, "Password must be at least 6 characters"),
@@ -66,9 +85,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 const userId = decodeUserId(tokens.access_token);
                 if (!userId) return null;
 
+                const name = await fetchName(tokens.access_token);
+
                 return {
                     id: userId,
                     email,
+                    name,
                     accessToken: tokens.access_token,
                     refreshToken: tokens.refresh_token,
                 };
@@ -80,6 +102,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         async jwt({ token, user, trigger, session }) {
             if (user) {
                 token.id = user.id;
+                token.name = user.name;
                 token.accessToken = user.accessToken;
                 token.refreshToken = user.refreshToken;
             }
@@ -88,12 +111,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             if (trigger === "update" && typeof session?.accessToken === "string") {
                 token.accessToken = session.accessToken;
             }
+            // Fired by the profile page after a successful PATCH /me, so the new
+            // name shows up in the sidebar/avatar without a full re-login.
+            if (trigger === "update" && typeof session?.name === "string") {
+                token.name = session.name;
+            }
             return token;
         },
 
         async session({ session, token }) {
             if (token?.id) {
                 session.user.id = token.id as string;
+            }
+            if (typeof token.name === "string") {
+                session.user.name = token.name;
             }
             if (typeof token.accessToken === "string") {
                 session.accessToken = token.accessToken;
