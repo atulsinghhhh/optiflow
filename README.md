@@ -27,9 +27,7 @@ This is a monorepo: Go backend and Next.js frontend live in separate top-level t
 /frontend            # existing Next.js app (App Router) — the working product today
   /app               # pages + API routes
   /components        # Shadcn UI components
-  /lib               # Prisma/MinIO/Redis clients, utils
-  /prisma            # schema + migrations
-  /workers           # Node/Redis background worker (thumbnail generation)
+  /lib               # MinIO/Redis clients, utils
   /scripts           # seed/enqueue/monitor scripts
   /public
 

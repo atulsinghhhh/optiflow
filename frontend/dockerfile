@@ -21,10 +21,16 @@ COPY . .
 # Uncomment the following line in case you want to disable telemetry during the build.
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# NEXT_PUBLIC_* vars are inlined at build time, so auth-svc's URL must be
-# baked in here rather than passed at container runtime.
+# NEXT_PUBLIC_* vars are inlined at build time, so backend service URLs must
+# be baked in here rather than passed at container runtime.
 ARG NEXT_PUBLIC_AUTH_SVC_URL
 ENV NEXT_PUBLIC_AUTH_SVC_URL=$NEXT_PUBLIC_AUTH_SVC_URL
+ARG NEXT_PUBLIC_API_SVC_URL
+ENV NEXT_PUBLIC_API_SVC_URL=$NEXT_PUBLIC_API_SVC_URL
+ARG NEXT_PUBLIC_UPLOAD_SVC_URL
+ENV NEXT_PUBLIC_UPLOAD_SVC_URL=$NEXT_PUBLIC_UPLOAD_SVC_URL
+ARG NEXT_PUBLIC_NOTIFY_SVC_URL
+ENV NEXT_PUBLIC_NOTIFY_SVC_URL=$NEXT_PUBLIC_NOTIFY_SVC_URL
 
 RUN npm run build
 

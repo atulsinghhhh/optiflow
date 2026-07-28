@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 	"github.com/hibiken/asynq"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -54,6 +55,13 @@ func main() {
 	r.Use(chimw.RequestID)
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   []string{cfg.FrontendOrigin},
+		AllowedMethods:   []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Content-Type", "Authorization"},
+		AllowCredentials: false,
+		MaxAge:           300,
+	}))
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -66,6 +74,7 @@ func main() {
 		r.Route("/uploads", func(r chi.Router) {
 			r.Post("/presign", h.presign)
 			r.Post("/{id}/complete", h.complete)
+			r.Get("/{id}/download-url", h.downloadURL)
 		})
 	})
 
@@ -86,6 +95,7 @@ type config struct {
 	MinioUseSSL    bool
 	MinioBucket    string
 	RedisAddr      string
+	FrontendOrigin string
 }
 
 func loadConfig() (config, error) {
@@ -131,6 +141,11 @@ func loadConfig() (config, error) {
 		port = "8083"
 	}
 
+	frontendOrigin := os.Getenv("FRONTEND_ORIGIN")
+	if frontendOrigin == "" {
+		frontendOrigin = "http://localhost:3000"
+	}
+
 	return config{
 		Port:           port,
 		DatabaseURL:    dbURL,
@@ -141,5 +156,6 @@ func loadConfig() (config, error) {
 		MinioUseSSL:    useSSL,
 		MinioBucket:    bucket,
 		RedisAddr:      redisAddr,
+		FrontendOrigin: frontendOrigin,
 	}, nil
 }

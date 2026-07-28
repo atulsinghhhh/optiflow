@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "OptiFlow",
-  description: "Modern, dynamic cloud storage and analytics.",
+  title: "StreamVault",
+  description: "File and video upload, storage, sharing, and streaming preview.",
 };
 
 export default function RootLayout({
@@ -25,8 +25,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    // We enforce dark mode to give a premium, sleek look by default
-    <html lang="en" className="dark" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen bg-background text-foreground`}
       >

@@ -24,14 +24,14 @@ export function LandingNavbar() {
     <header
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
         scrolled
-          ? "bg-white/80 backdrop-blur-xl border-b border-slate-200 h-16"
+          ? "bg-background/80 backdrop-blur-xl border-b border-border h-16"
           : "bg-transparent h-20 border-b border-transparent"
       }`}
     >
       <div className="max-w-6xl mx-auto flex h-full items-center justify-between px-6">
         <Link href="/" className="flex items-center gap-2">
-          <span className="font-semibold text-lg tracking-tight text-[#0A2540]">
-            OptiFlow
+          <span className="font-semibold text-lg tracking-tight text-foreground">
+            StreamVault
           </span>
         </Link>
 
@@ -40,7 +40,7 @@ export function LandingNavbar() {
             <a
               key={item.name}
               href={item.href}
-              className="text-sm font-medium text-slate-600 hover:text-[#0A2540] transition-colors"
+              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
               {item.name}
             </a>
@@ -50,20 +50,20 @@ export function LandingNavbar() {
         <div className="hidden md:flex items-center gap-3">
           <Link
             href="/signin"
-            className="text-sm font-medium text-slate-600 hover:text-[#0A2540] transition-colors px-3 py-2"
+            className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors px-3 py-2"
           >
             Sign in
           </Link>
           <Link
             href="/sign-up"
-            className="text-sm font-semibold bg-[#0A2540] text-white px-4 py-2.5 rounded-full hover:bg-[#0A2540]/90 transition-colors"
+            className="text-sm font-semibold bg-ink text-ink-foreground px-4 py-2.5 rounded-full hover:bg-ink/90 transition-colors"
           >
             Get started
           </Link>
         </div>
 
         <button
-          className="md:hidden p-2 text-[#0A2540]"
+          className="md:hidden p-2 text-foreground"
           onClick={() => setMobileOpen((v) => !v)}
           aria-label="Toggle menu"
         >
@@ -77,7 +77,7 @@ export function LandingNavbar() {
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden bg-white border-b border-slate-200 md:hidden"
+            className="overflow-hidden bg-background border-b border-border md:hidden"
           >
             <div className="flex flex-col px-6 py-6 gap-5">
               {navItems.map((item) => (
@@ -85,17 +85,17 @@ export function LandingNavbar() {
                   key={item.name}
                   href={item.href}
                   onClick={() => setMobileOpen(false)}
-                  className="text-sm font-medium text-slate-600"
+                  className="text-sm font-medium text-muted-foreground"
                 >
                   {item.name}
                 </a>
               ))}
-              <Link href="/signin" className="text-sm font-medium text-slate-600">
+              <Link href="/signin" className="text-sm font-medium text-muted-foreground">
                 Sign in
               </Link>
               <Link
                 href="/sign-up"
-                className="text-sm font-semibold text-white bg-[#0A2540] rounded-full py-3 text-center"
+                className="text-sm font-semibold text-ink-foreground bg-ink rounded-full py-3 text-center"
               >
                 Get started
               </Link>

@@ -16,7 +16,6 @@ import (
 
 	"github.com/atulsinghhhh/optiflow/internal/db"
 	"github.com/atulsinghhhh/optiflow/internal/models"
-	"github.com/atulsinghhhh/optiflow/internal/notify"
 	"github.com/atulsinghhhh/optiflow/internal/queue"
 	"github.com/atulsinghhhh/optiflow/internal/storage"
 )

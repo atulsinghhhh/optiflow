@@ -37,12 +37,18 @@ services:
       dockerfile: dockerfile
       args:
         NEXT_PUBLIC_AUTH_SVC_URL: ${NEXT_PUBLIC_AUTH_SVC_URL:-}
+        NEXT_PUBLIC_API_SVC_URL: ${NEXT_PUBLIC_API_SVC_URL:-}
+        NEXT_PUBLIC_UPLOAD_SVC_URL: ${NEXT_PUBLIC_UPLOAD_SVC_URL:-}
+        NEXT_PUBLIC_NOTIFY_SVC_URL: ${NEXT_PUBLIC_NOTIFY_SVC_URL:-}
     image: ${DOCKER_USERNAME:-atulsinghhhh}/optiflow:latest
     container_name: optiflow_web
     restart: unless-stopped
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_AUTH_SVC_URL=${NEXT_PUBLIC_AUTH_SVC_URL}
+      - NEXT_PUBLIC_API_SVC_URL=${NEXT_PUBLIC_API_SVC_URL}
+      - NEXT_PUBLIC_UPLOAD_SVC_URL=${NEXT_PUBLIC_UPLOAD_SVC_URL}
+      - NEXT_PUBLIC_NOTIFY_SVC_URL=${NEXT_PUBLIC_NOTIFY_SVC_URL}
       - AUTH_SECRET=${AUTH_SECRET}
       - AUTH_TRUST_HOST=true
       - NEXTAUTH_URL=http://localhost

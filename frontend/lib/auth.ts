@@ -15,6 +15,7 @@ declare module "next-auth" {
     }
     interface Session {
         accessToken?: string;
+        refreshToken?: string;
     }
 }
 
@@ -76,11 +77,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     ],
 
     callbacks: {
-        async jwt({ token, user }) {
+        async jwt({ token, user, trigger, session }) {
             if (user) {
                 token.id = user.id;
                 token.accessToken = user.accessToken;
                 token.refreshToken = user.refreshToken;
+            }
+            // Fired by the API client's session-bridge after it silently refreshes
+            // an expired access token, so the new token survives a page reload.
+            if (trigger === "update" && typeof session?.accessToken === "string") {
+                token.accessToken = session.accessToken;
             }
             return token;
         },
@@ -91,6 +97,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             }
             if (typeof token.accessToken === "string") {
                 session.accessToken = token.accessToken;
+            }
+            if (typeof token.refreshToken === "string") {
+                session.refreshToken = token.refreshToken;
             }
             return session;
         },

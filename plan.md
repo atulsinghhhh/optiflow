@@ -86,14 +86,14 @@ The idea: **v1 proves the core product works end-to-end** (upload → process �
 
 **Features**
 - Auth: signup/login, JWT access+refresh, GitHub OAuth, password reset.
-- Upload: presigned direct-to-MinIO upload, chunked/resumable (`tus`), real progress UI (no more mock `setInterval`).
-- Folder management: create/rename/move/delete — fully wired, including UI (fixing OptiFlow's dead buttons).
-- File versioning, download, preview (images + PDF).
-- Image pipeline: thumbnailing via `asynq` job with retry/backoff/DLQ.
-- Video pipeline: ffmpeg transcode to HLS (360p/720p/1080p) + poster frame, `hls.js` playback.
-- Sharing: public token links + directed user shares, expiry, optional password, download-count limits.
-- Notifications: polling first, upgrade to WebSocket by end of v1.
-- Storage quota: actually enforced (not just displayed).
+- Upload: presigned direct-to-MinIO upload, chunked/resumable (`tus`), real progress UI (no more mock `setInterval`). ✅ *Presigned PUT + real progress UI is wired; chunked/resumable (`tus`) is not — see Implementation status below.*
+- Folder management: create/rename/move/delete — fully wired, including UI (fixing OptiFlow's dead buttons). ✅ *Done — the frontend's dead rename/move/delete dropdown items are now wired to real `api-svc` calls.*
+- File versioning, download, preview (images + PDF). ⚠️ *Download is wired. `File.version` exists but there's no version-history endpoint — no version list/restore UI. Preview is thumbnail-only, no PDF preview.*
+- Image pipeline: thumbnailing via `asynq` job with retry/backoff/DLQ. ✅ Already implemented (`image-worker`).
+- Video pipeline: ffmpeg transcode to HLS (360p/720p/1080p) + poster frame, `hls.js` playback. ⚠️ *Transcode pipeline is implemented (`video-worker`). `hls.js` playback in the frontend is not — see Implementation status.*
+- Sharing: public token links + directed user shares, expiry, optional password, download-count limits. ❌ *Not built — no `Share` model or endpoints exist anywhere in the backend. See Implementation status for the scoping decision needed.*
+- Notifications: polling first, upgrade to WebSocket by end of v1. ✅ *Shipped straight to WebSocket (`notify-svc`'s `/ws` already existed) — skipped the polling intermediate step.*
+- Storage quota: actually enforced (not just displayed). ❌ *Not built — no quota field on `User`, nothing enforced. Frontend now shows real storage-used numbers instead of a fake quota bar, but there's no limit to enforce against yet.*
 
 **Architecture / DevOps**
 - Services: `auth-svc`, `api-svc`, `upload-svc`, `image-worker`, `video-worker`, `notify-svc`.
@@ -103,6 +103,33 @@ The idea: **v1 proves the core product works end-to-end** (upload → process �
 - Prometheus + Grafana for queue depth, job duration, error rate.
 - PgBouncer in front of Postgres from day one.
 - CDN in front of MinIO for file/video bytes (biggest single scalability win — do this early, not later).
+
+---
+
+#### Implementation status (as of 2026-07-28)
+
+The frontend was carried over from the pre-rewrite Prisma-based app and, until now, was only wired to `auth-svc` (signup/login). Every other dashboard page called dead `/api/*` Next.js routes with no backend behind them. This pass wired the frontend to the real Go services end-to-end. What's genuinely done vs. still open:
+
+**Done:**
+- Shared API client layer (`frontend/lib/api/`) with per-service axios instances, JWT attach + silent refresh-and-retry on 401, typed calls matching `api-svc`/`upload-svc`/`notify-svc` exactly.
+- Folders and files: full CRUD against `api-svc`, including the previously dead-in-the-UI folder rename/move/delete actions.
+- Uploads: real presigned-PUT flow (`upload-svc` `/uploads/presign` → direct PUT to MinIO with live progress → `/uploads/{id}/complete`), replacing the fully-simulated `setInterval` upload UI.
+- Downloads/thumbnails: added `GET /uploads/{id}/download-url` to `upload-svc` (no such endpoint existed before — `storage.PresignedGetURL` was implemented but had zero callers), so file downloads and image thumbnails now work.
+- CORS: `api-svc` and `upload-svc` had no CORS middleware at all (unlike `auth-svc`/`notify-svc`) — browser calls would have failed outright. Fixed to mirror the existing pattern.
+- Notifications: real `GET /notifications` / `PATCH /notifications/{id}/read`, plus a live WebSocket connection to `notify-svc`'s `/ws` (with reconnect-with-fresh-token on access-token refresh) — replacing 30s polling against a dead endpoint.
+- Design: unified the app on one Stripe-inspired light theme (token system in `app/globals.css`) instead of two clashing visual languages (light landing/auth vs. hardcoded dark violet/slate dashboard). The dashboard was also being force-locked into dark mode by a stray `className="dark"` on `<html>`, independent of the token mismatch.
+- Removed dead code: the fully-simulated `FileUpload` component, an orphaned `hero-dithering-card.tsx` (and its exclusive `@react-three/fiber`/`three`/`@paper-design/shaders-react` dependencies), and leftover Prisma-era packages (`@prisma/*`, `pg`, `ioredis`, `minio`, `bcryptjs`) with zero references in the current codebase.
+- Profile, Shared, and the public `/share/[token]` pages: disconnected from dead `/api/*` calls and replaced with an honest "not yet available" state instead of a silent 404 — per this file's own "no dead code / no unwired features" rule.
+
+**Still open (tracked, not silently punted):**
+- **Sharing** has no backend at all — no `Share` model, no endpoints, despite being listed above as v1 and marketed on the landing page. This needs an explicit call: either pull a small `Share{id, file_id, token, expires_at}` model + `POST /shares` / `GET /shares/{token}` into near-term v1 scope, or formally demote it out of the v1 checklist. Not decided here.
+- **Profile editing** — `auth-svc` only issues `{id, email}` via JWT claims and has no `GET/PATCH /me`. The frontend now shows real read-only session data instead of a fake editable profile, but there's nothing to edit against yet.
+- **Analytics** — no aggregation endpoint on `api-svc`. The dashboard overview now derives real stats from `GET /files/` instead of showing a fake historical chart, but that endpoint only lists one folder level at a time — there's no recursive/account-wide total, so the UI is explicitly scoped to "root folder" numbers. A real account-wide view needs a small aggregation endpoint.
+- **Chunked/resumable upload (`tus`)** — not built; uploads are a single presigned PUT, which is fine for typical files but not resilient to a dropped connection on very large ones.
+- **File delete doesn't clean up the MinIO object** — already noted in `handlers_file.go`'s code comment; now also flagged here so it's visible without reading Go source.
+- **`notify-svc`'s WebSocket hub is single-instance** (in-process `map[userID][]*Conn`, no Redis/NATS fan-out) — fine for a single-instance v1 deploy, but ties directly into the v2 NATS event-fan-out item below once notify-svc needs to run more than one replica.
+- **HLS video preview (`hls.js`)** — listed in the stack table above as v1, but not implemented this pass. A single presigned URL for the HLS master `.m3u8` isn't sufficient on its own — every referenced `.ts` segment also needs to be fetchable, which is a real design decision (segment-level presigning vs. a public-read bucket policy) rather than something to improvise in the frontend. Video files currently show status/thumbnail like any other file, no player.
+- **`deploy/compose/docker-compose.yaml`** only brings up infra (Postgres/Redis/MinIO) — none of the six Go services are containerized/composed yet; each currently runs via `go run ./cmd/<svc>`. `deploy/docker/video-worker.Dockerfile` exists as a partial start toward per-service Dockerfiles.
 
 ---
 

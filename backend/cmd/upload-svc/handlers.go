@@ -170,6 +170,61 @@ func (h *handler) complete(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, file)
 }
 
+type downloadURLResponse struct {
+	URL       string    `json:"url"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+const downloadExpiry = 15 * time.Minute
+
+// downloadURL turns a stored file's object key into a time-limited, directly
+// fetchable URL. Lives here (not api-svc) because upload-svc already owns the
+// storage client — api-svc never touches MinIO directly.
+func (h *handler) downloadURL(w http.ResponseWriter, r *http.Request) {
+	userID, _ := middleware.UserIDFromContext(r.Context())
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid file id")
+		return
+	}
+
+	var file models.File
+	if err := h.db.Where("id = ? AND user_id = ?", id, userID).First(&file).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			httpx.WriteError(w, http.StatusNotFound, "file not found")
+			return
+		}
+		log.Error().Err(err).Msg("looking up file")
+		httpx.WriteError(w, http.StatusInternalServerError, "could not build download url")
+		return
+	}
+
+	key := file.StorageKey
+	if r.URL.Query().Get("variant") == "thumbnail" {
+		if file.ThumbnailKey == nil {
+			httpx.WriteError(w, http.StatusNotFound, "no thumbnail available for this file")
+			return
+		}
+		key = *file.ThumbnailKey
+	} else if file.Status == models.FileStatusPending {
+		httpx.WriteError(w, http.StatusConflict, "file has not finished uploading yet")
+		return
+	}
+
+	u, err := h.storage.PresignedGetURL(r.Context(), key, downloadExpiry)
+	if err != nil {
+		log.Error().Err(err).Msg("presigning download url")
+		httpx.WriteError(w, http.StatusInternalServerError, "could not build download url")
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, downloadURLResponse{
+		URL:       u.String(),
+		ExpiresAt: time.Now().Add(downloadExpiry),
+	})
+}
+
 // enqueueOrLog enqueues a processing task, logging failures loudly rather than
 // failing the request — the upload itself already succeeded, but a queueing
 // hiccup here means the file will be stuck at status=processing indefinitely.

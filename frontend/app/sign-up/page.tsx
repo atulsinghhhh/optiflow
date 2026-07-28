@@ -4,10 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import axios from "axios";
 import { ArrowLeft, Check } from "lucide-react";
 
-const AUTH_SVC_URL = process.env.NEXT_PUBLIC_AUTH_SVC_URL ?? "http://localhost:8081";
+import { authClient, ApiError } from "@/lib/api/http";
 
 const GitHubIcon = () => (
     <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 shrink-0">
@@ -16,16 +15,16 @@ const GitHubIcon = () => (
 );
 
 const Spinner = () => (
-    <svg className="animate-spin w-4 h-4 text-white" viewBox="0 0 24 24" fill="none">
+    <svg className="animate-spin w-4 h-4 text-ink-foreground" viewBox="0 0 24 24" fill="none">
         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
     </svg>
 );
 
 const inputCls =
-    "w-full bg-white text-[#0A2540] placeholder-slate-400 border border-slate-200 " +
-    "rounded-lg py-2.5 px-4 text-sm focus:outline-none focus:border-[#635BFF] " +
-    "focus:ring-2 focus:ring-[#635BFF]/20 transition-all duration-200";
+    "w-full bg-card text-foreground placeholder-muted-foreground border border-border " +
+    "rounded-lg py-2.5 px-4 text-sm focus:outline-none focus:border-primary " +
+    "focus:ring-2 focus:ring-primary/20 transition-all duration-200";
 
 export default function SignUpPage() {
     const router = useRouter();
@@ -43,34 +42,34 @@ export default function SignUpPage() {
         setIsLoading(true);
 
         try {
-            await axios.post(`${AUTH_SVC_URL}/signup`, { email, password, name });
+            await authClient.post("/signup", { email, password, name });
             setStep("success");
             setTimeout(() => router.push("/signin"), 1200);
         } catch (err) {
-            const message = axios.isAxiosError(err) ? err.response?.data?.error : undefined;
-            setError(message ?? "Failed to create account. Please try again.");
+            const message = err instanceof ApiError ? err.message : "Failed to create account. Please try again.";
+            setError(message);
             setIsLoading(false);
         }
     };
 
     return (
-        <div className="relative flex min-h-screen flex-col items-center justify-center bg-white px-4 py-16 overflow-hidden">
+        <div className="relative flex min-h-screen flex-col items-center justify-center bg-background px-4 py-16 overflow-hidden">
             {/* gradient mesh background, consistent with landing page */}
             <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-                <div className="absolute -top-32 left-1/4 w-[30rem] h-[30rem] rounded-full bg-[#635BFF] opacity-15 blur-[120px]" />
-                <div className="absolute -bottom-32 right-1/4 w-[26rem] h-[26rem] rounded-full bg-[#00A3FF] opacity-15 blur-[120px]" />
+                <div className="absolute -top-32 left-1/4 w-[30rem] h-[30rem] rounded-full bg-primary opacity-15 blur-[120px]" />
+                <div className="absolute -bottom-32 right-1/4 w-[26rem] h-[26rem] rounded-full bg-accent opacity-15 blur-[120px]" />
             </div>
 
             <Link
                 href="/"
-                className="absolute top-6 left-6 flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-[#0A2540] transition-colors"
+                className="absolute top-6 left-6 flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
                 <ArrowLeft className="w-4 h-4" />
                 Back to home
             </Link>
 
             <div className="w-full max-w-sm">
-                <div className="rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-200/50 p-8">
+                <div className="rounded-2xl border border-border bg-card shadow-xl p-8">
                     <AnimatePresence mode="wait">
                         {step === "form" ? (
                             <motion.div
@@ -82,15 +81,15 @@ export default function SignUpPage() {
                                 className="space-y-6"
                             >
                                 <div className="text-center space-y-1">
-                                    <h1 className="text-2xl font-semibold tracking-tight text-[#0A2540]">Create account</h1>
-                                    <p className="text-slate-500 text-sm">Join OptiFlow today</p>
+                                    <h1 className="text-2xl font-semibold tracking-tight text-foreground">Create account</h1>
+                                    <p className="text-muted-foreground text-sm">Join StreamVault today</p>
                                 </div>
 
                                 <button
                                     disabled
                                     title="GitHub sign-in isn't wired up yet — auth-svc doesn't expose an OAuth exchange endpoint"
-                                    className="w-full flex items-center justify-center gap-3 bg-slate-50
-                             text-slate-400 border border-slate-200 rounded-lg py-2.5 px-4
+                                    className="w-full flex items-center justify-center gap-3 bg-muted
+                             text-muted-foreground border border-border rounded-lg py-2.5 px-4
                              cursor-not-allowed text-sm font-medium"
                                 >
                                     <GitHubIcon />
@@ -98,9 +97,9 @@ export default function SignUpPage() {
                                 </button>
 
                                 <div className="flex items-center gap-4">
-                                    <div className="h-px bg-slate-200 flex-1" />
-                                    <span className="text-slate-400 text-xs uppercase tracking-wider">or</span>
-                                    <div className="h-px bg-slate-200 flex-1" />
+                                    <div className="h-px bg-border flex-1" />
+                                    <span className="text-muted-foreground text-xs uppercase tracking-wider">or</span>
+                                    <div className="h-px bg-border flex-1" />
                                 </div>
 
                                 <form onSubmit={handleSubmit} className="space-y-3">
@@ -108,7 +107,7 @@ export default function SignUpPage() {
                                         <motion.div
                                             initial={{ opacity: 0, scale: 0.95 }}
                                             animate={{ opacity: 1, scale: 1 }}
-                                            className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-4 py-3 text-center"
+                                            className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-3 text-center"
                                         >
                                             {error}
                                         </motion.div>
@@ -150,18 +149,18 @@ export default function SignUpPage() {
                                         disabled={isLoading || !email || !password || !name}
                                         whileHover={{ scale: 1.01 }}
                                         whileTap={{ scale: 0.98 }}
-                                        className="w-full flex items-center justify-center gap-2 rounded-full bg-[#0A2540]
-                               text-white font-semibold py-2.5 text-sm
-                               hover:bg-[#0A2540]/90 transition-all duration-200
+                                        className="w-full flex items-center justify-center gap-2 rounded-full bg-ink
+                               text-ink-foreground font-semibold py-2.5 text-sm
+                               hover:bg-ink/90 transition-all duration-200
                                disabled:opacity-40 disabled:cursor-not-allowed disabled:scale-100"
                                     >
                                         {isLoading ? <Spinner /> : "Create account"}
                                     </motion.button>
                                 </form>
 
-                                <p className="text-center text-sm text-slate-500">
+                                <p className="text-center text-sm text-muted-foreground">
                                     Already have an account?{" "}
-                                    <Link href="/signin" className="text-[#635BFF] font-medium hover:underline">
+                                    <Link href="/signin" className="text-primary font-medium hover:underline">
                                         Sign in
                                     </Link>
                                 </p>
@@ -178,24 +177,24 @@ export default function SignUpPage() {
                                     initial={{ scale: 0.7, opacity: 0 }}
                                     animate={{ scale: 1, opacity: 1 }}
                                     transition={{ duration: 0.4, delay: 0.1 }}
-                                    className="mx-auto w-14 h-14 rounded-full bg-[#00B287]/10 flex items-center justify-center"
+                                    className="mx-auto w-14 h-14 rounded-full bg-success/10 flex items-center justify-center"
                                 >
-                                    <Check className="w-7 h-7 text-[#00B287]" />
+                                    <Check className="w-7 h-7 text-success" />
                                 </motion.div>
                                 <div className="space-y-1">
-                                    <h1 className="text-2xl font-semibold tracking-tight text-[#0A2540]">Account created!</h1>
-                                    <p className="text-slate-500 text-sm">Taking you to sign in…</p>
+                                    <h1 className="text-2xl font-semibold tracking-tight text-foreground">Account created!</h1>
+                                    <p className="text-muted-foreground text-sm">Taking you to sign in…</p>
                                 </div>
                             </motion.div>
                         )}
                     </AnimatePresence>
                 </div>
 
-                <p className="text-xs text-slate-400 text-center leading-relaxed mt-6">
+                <p className="text-xs text-muted-foreground text-center leading-relaxed mt-6">
                     By creating an account you agree to our{" "}
-                    <Link href="#" className="underline hover:text-slate-600 transition-colors">Terms</Link>
+                    <Link href="#" className="underline hover:text-foreground transition-colors">Terms</Link>
                     {" "}and{" "}
-                    <Link href="#" className="underline hover:text-slate-600 transition-colors">Privacy Policy</Link>.
+                    <Link href="#" className="underline hover:text-foreground transition-colors">Privacy Policy</Link>.
                 </p>
             </div>
         </div>
