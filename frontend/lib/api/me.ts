@@ -4,6 +4,7 @@ export type Me = {
     id: string;
     email: string;
     name: string;
+    storage_quota_bytes: number;
 };
 
 export async function getMe(): Promise<Me> {

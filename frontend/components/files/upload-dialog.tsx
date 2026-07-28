@@ -57,7 +57,7 @@ export function UploadDialog({
                 <DialogHeader>
                     <DialogTitle>Upload files</DialogTitle>
                     <DialogDescription>
-                        Files upload directly to storage with a presigned URL — nothing passes through the app server.
+                        Uploads are resumable — a dropped connection picks up where it left off instead of restarting.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -121,12 +121,8 @@ export function UploadDialog({
                                                 </span>
                                             </div>
 
-                                            {(upload.status === "uploading" || upload.status === "presigning") && (
+                                            {upload.status === "uploading" && (
                                                 <Progress value={upload.progress} className="h-1.5" />
-                                            )}
-
-                                            {upload.status === "completing" && (
-                                                <p className="text-[10px] text-muted-foreground">Finishing up…</p>
                                             )}
 
                                             {upload.status === "done" && (

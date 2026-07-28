@@ -19,6 +19,16 @@ export async function presignUpload(payload: {
     return res.data;
 }
 
+// presignNewVersion starts uploading a replacement for an existing file —
+// name/folder are inherited server-side, only the bytes change.
+export async function presignNewVersion(
+    fileId: string,
+    payload: { size_bytes: number; mime_type: string },
+): Promise<PresignResponse> {
+    const res = await uploadClient.post<PresignResponse>(`/uploads/${fileId}/versions/presign`, payload);
+    return res.data;
+}
+
 // Deliberately a bare axios.put, not `uploadClient` — MinIO's auth is the
 // presigned query signature itself. Routing this through the interceptor-
 // bearing client would attach a bearer token MinIO doesn't expect, and risks

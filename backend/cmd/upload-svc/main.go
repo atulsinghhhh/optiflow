@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -51,14 +52,30 @@ func main() {
 
 	h := &handler{db: gormDB, storage: storageClient, queue: queueClient}
 
+	tusHandler, err := h.newTusHandler(cfg.TusDataDir)
+	if err != nil {
+		log.Fatal().Err(err).Msg("setting up tus resumable-upload handler")
+	}
+
 	r := chi.NewRouter()
 	r.Use(chimw.RequestID)
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{cfg.FrontendOrigin},
-		AllowedMethods:   []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Content-Type", "Authorization"},
+		AllowedOrigins: []string{cfg.FrontendOrigin},
+		AllowedMethods: []string{"GET", "POST", "PATCH", "DELETE", "HEAD", "OPTIONS"},
+		// The tus protocol headers (Tus-Resumable, Upload-*) are needed on top
+		// of the usual Content-Type/Authorization pair since tusd's own CORS
+		// handling is disabled in favor of this single outer layer.
+		AllowedHeaders: []string{
+			"Content-Type", "Authorization",
+			"Tus-Resumable", "Upload-Length", "Upload-Metadata", "Upload-Offset",
+			"Upload-Concat", "Upload-Defer-Length",
+		},
+		ExposedHeaders: []string{
+			"Location", "Upload-Offset", "Upload-Length", "Tus-Resumable",
+			"Upload-Metadata", "Upload-Expires", "Upload-Concat",
+		},
 		AllowCredentials: false,
 		MaxAge:           300,
 	}))
@@ -76,9 +93,15 @@ func main() {
 
 		r.Route("/uploads", func(r chi.Router) {
 			r.Post("/presign", h.presign)
+			r.Post("/{id}/versions/presign", h.presignVersion)
 			r.Post("/{id}/complete", h.complete)
 			r.Get("/{id}/download-url", h.downloadURL)
 			r.Get("/{id}/hls/*", h.hlsAsset)
+			// tusHandler's own router expects paths relative to BasePath
+			// ("/uploads/tus/"), which is why the prefix is stripped here
+			// rather than relying on chi's mount semantics.
+			r.Handle("/tus", http.StripPrefix("/uploads/tus", tusHandler))
+			r.Handle("/tus/*", http.StripPrefix("/uploads/tus", tusHandler))
 		})
 	})
 
@@ -100,6 +123,7 @@ type config struct {
 	MinioBucket    string
 	RedisAddr      string
 	FrontendOrigin string
+	TusDataDir     string
 }
 
 func loadConfig() (config, error) {
@@ -150,6 +174,11 @@ func loadConfig() (config, error) {
 		frontendOrigin = "http://localhost:3000"
 	}
 
+	tusDataDir := os.Getenv("TUS_DATA_DIR")
+	if tusDataDir == "" {
+		tusDataDir = filepath.Join(os.TempDir(), "streamvault-tus-uploads")
+	}
+
 	return config{
 		Port:           port,
 		DatabaseURL:    dbURL,
@@ -159,6 +188,7 @@ func loadConfig() (config, error) {
 		MinioSecretKey: secretKey,
 		MinioUseSSL:    useSSL,
 		MinioBucket:    bucket,
+		TusDataDir:     tusDataDir,
 		RedisAddr:      redisAddr,
 		FrontendOrigin: frontendOrigin,
 	}, nil

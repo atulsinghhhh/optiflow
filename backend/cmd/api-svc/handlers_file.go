@@ -30,7 +30,9 @@ func (h *handler) resolveOwnedFile(userID, fileID uuid.UUID) (models.File, error
 func (h *handler) listFiles(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserIDFromContext(r.Context())
 
-	query := h.db.Where("user_id = ?", userID)
+	// is_current excludes superseded versions from listings — they're only
+	// reachable via GET /files/{id}/versions, not the regular file browser.
+	query := h.db.Where("user_id = ? AND is_current = ?", userID, true)
 	if folderParam := r.URL.Query().Get("folder_id"); folderParam != "" {
 		folderID, err := uuid.Parse(folderParam)
 		if err != nil {
@@ -125,10 +127,13 @@ func (h *handler) updateFile(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, file)
 }
 
-// deleteFile removes the file's metadata row, its share links, and best-effort
-// cleans up its MinIO object(s). Storage cleanup failures are logged loudly
-// but never block the delete — a stray orphaned object is recoverable later,
-// a file the user can't delete because of a storage hiccup is not.
+// deleteFile removes every version of the file (its whole lineage, not just
+// the current row — otherwise old versions would become unreachable orphans
+// in both Postgres and MinIO, since they're only ever found by walking from
+// the current row), their share links, and best-effort cleans up their MinIO
+// object(s). Storage cleanup failures are logged loudly but never block the
+// delete — a stray orphaned object is recoverable later, a file the user
+// can't delete because of a storage hiccup is not.
 func (h *handler) deleteFile(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserIDFromContext(r.Context())
 
@@ -143,19 +148,34 @@ func (h *handler) deleteFile(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusNotFound, "file not found")
 		return
 	}
+	root := lineageRootID(file)
 
+	var versions []models.File
 	if err := h.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("file_id = ? AND user_id = ?", id, userID).Delete(&models.Share{}).Error; err != nil {
+		var err error
+		versions, err = lineageFiles(tx, userID, root)
+		if err != nil {
+			return fmt.Errorf("loading versions: %w", err)
+		}
+
+		ids := make([]uuid.UUID, len(versions))
+		for i, v := range versions {
+			ids[i] = v.ID
+		}
+
+		if err := tx.Where("file_id IN ? AND user_id = ?", ids, userID).Delete(&models.Share{}).Error; err != nil {
 			return fmt.Errorf("deleting shares: %w", err)
 		}
-		return tx.Where("id = ? AND user_id = ?", id, userID).Delete(&models.File{}).Error
+		return tx.Where("id IN ? AND user_id = ?", ids, userID).Delete(&models.File{}).Error
 	}); err != nil {
 		log.Error().Err(err).Msg("deleting file")
 		httpx.WriteError(w, http.StatusInternalServerError, "could not delete file")
 		return
 	}
 
-	h.cleanupFileObjects(r.Context(), file)
+	for _, v := range versions {
+		h.cleanupFileObjects(r.Context(), v)
+	}
 
 	w.WriteHeader(http.StatusNoContent)
 }

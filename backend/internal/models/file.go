@@ -30,9 +30,18 @@ type File struct {
 	ThumbnailKey *string `json:"thumbnail_key,omitempty"`
 	// PlaylistKey is the HLS master .m3u8 for video files, set by video-worker on
 	// success. Nil for non-video files, or videos still processing/failed.
-	PlaylistKey *string    `json:"playlist_key,omitempty"`
-	Version     int        `gorm:"not null;default:1" json:"version"`
-	ParentID    *uuid.UUID `gorm:"type:uuid;index" json:"parent_id"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	PlaylistKey *string `json:"playlist_key,omitempty"`
+	Version     int     `gorm:"not null;default:1" json:"version"`
+	// ParentID points at the lineage root (the very first File row for this
+	// logical file) — nil on that root row itself. Every version of the same
+	// logical file shares one root, which is what GET /files/{id}/versions
+	// walks to find the full history.
+	ParentID *uuid.UUID `gorm:"type:uuid;index" json:"parent_id"`
+	// IsCurrent marks which version is "the file" for listings and default
+	// downloads — exactly one true row per lineage at a time. Uploading a new
+	// version or restoring an old one flips this flag; it never creates or
+	// deletes rows outside of those two operations.
+	IsCurrent bool      `gorm:"not null;default:true;index" json:"is_current"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }

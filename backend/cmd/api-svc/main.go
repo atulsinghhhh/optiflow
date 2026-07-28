@@ -87,6 +87,8 @@ func main() {
 			r.Delete("/{id}", h.deleteFile)
 			r.Post("/{id}/shares", h.createShare)
 			r.Get("/{id}/shares", h.listFileShares)
+			r.Get("/{id}/versions", h.listFileVersions)
+			r.Post("/{id}/versions/{versionId}/restore", h.restoreFileVersion)
 		})
 
 		r.Route("/shares", func(r chi.Router) {

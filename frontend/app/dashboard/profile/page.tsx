@@ -7,6 +7,7 @@ import { HardDrive, Loader2, Pencil, Save, X } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
 import { useFileStats } from "@/lib/hooks/use-files";
 import { useMe, useUpdateMe } from "@/lib/hooks/use-me";
 import { ApiError } from "@/lib/api/http";
@@ -142,9 +143,20 @@ export default function ProfilePage() {
                     <div className="space-y-4">
                         <div className="flex items-end justify-between font-bold">
                             <span className="text-3xl text-foreground">{formatBytes(stats?.total_bytes ?? 0)}</span>
+                            <span className="text-sm text-muted-foreground font-medium">
+                                of {formatBytes(me?.storage_quota_bytes ?? 0)}
+                            </span>
                         </div>
+                        <Progress
+                            value={
+                                me?.storage_quota_bytes
+                                    ? Math.min(100, ((stats?.total_bytes ?? 0) / me.storage_quota_bytes) * 100)
+                                    : 0
+                            }
+                            className="h-2"
+                        />
                         <p className="text-xs text-muted-foreground">
-                            {stats?.total_files ?? 0} files across your whole account. Quota isn&apos;t enforced yet.
+                            {stats?.total_files ?? 0} files across your whole account.
                         </p>
                     </div>
                 </div>

@@ -1,9 +1,23 @@
 
 # Local dev stack for the StreamVault Go services (auth-svc, api-svc, upload-svc,
-# image-worker, video-worker, notify-svc). Separate from the root docker-compose.yaml,
-# which runs the existing Next.js/Prisma app — ports are offset from the defaults
-# (5435/6381/9010-9011) to avoid colliding with the frontend stack and any other
-# local Postgres/Redis/MinIO instances (including a native, non-Docker Postgres).
+# image-worker, video-worker, notify-svc) plus their infra (Postgres, Redis,
+# MinIO). Separate from the root docker-compose.yaml, which runs the existing
+# Next.js/Prisma app — ports are offset from the defaults (5435/6381/9010-9011)
+# to avoid colliding with the frontend stack and any other local
+# Postgres/Redis/MinIO instances (including a native, non-Docker Postgres).
+#
+# The frontend is NOT containerized here — it still runs via `npm run dev`
+# against these services' host-mapped ports. NEXT_PUBLIC_*_SVC_URL values are
+# baked into the frontend image at build time and must be browser-reachable
+# (localhost:808x), while NextAuth's server-side calls reuse those same public
+# URLs — putting the frontend in this same Docker network would need a real
+# split between "browser-facing" and "server-to-server" service URLs, which
+# is a bigger change than "containerize the six Go services" calls for.
+#
+# Secrets below default to this repo's existing dev-only values (see each
+# service's .env) so `docker compose up` and `go run ./cmd/<svc>` stay
+# interchangeable; override via a root .env file or exported vars for
+# anything beyond local dev.
 
 services:
   db:
@@ -38,6 +52,133 @@ services:
     volumes:
       - streamvault_minio_data:/data
     command: server /data --console-address ":9001"
+
+  auth-svc:
+    build:
+      context: ../../backend
+      dockerfile: ../deploy/docker/auth-svc.Dockerfile
+    container_name: streamvault_auth_svc
+    depends_on:
+      - db
+    environment:
+      - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/streamvault?sslmode=disable
+      - JWT_SECRET=${JWT_SECRET:-15bbe5d8bb6848e1cc295e9d4dd5ba375eeb67d823c009ad83387ac41dbad1a5}
+      - AUTH_SVC_PORT=8081
+      - FRONTEND_ORIGIN=${FRONTEND_ORIGIN:-http://localhost:3000}
+    ports:
+      - "8081:8081"
+
+  api-svc:
+    build:
+      context: ../../backend
+      dockerfile: ../deploy/docker/api-svc.Dockerfile
+    container_name: streamvault_api_svc
+    depends_on:
+      - db
+      - storage
+    environment:
+      - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/streamvault?sslmode=disable
+      - JWT_SECRET=${JWT_SECRET:-15bbe5d8bb6848e1cc295e9d4dd5ba375eeb67d823c009ad83387ac41dbad1a5}
+      - API_SVC_PORT=8082
+      - FRONTEND_ORIGIN=${FRONTEND_ORIGIN:-http://localhost:3000}
+      - MINIO_ENDPOINT=storage:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-streamvault}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-streamvault123}
+      - MINIO_USE_SSL=false
+      - MINIO_BUCKET=streamvault
+    ports:
+      - "8082:8082"
+
+  upload-svc:
+    build:
+      context: ../../backend
+      dockerfile: ../deploy/docker/upload-svc.Dockerfile
+    container_name: streamvault_upload_svc
+    depends_on:
+      - db
+      - redis
+      - storage
+    environment:
+      - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/streamvault?sslmode=disable
+      - JWT_SECRET=${JWT_SECRET:-15bbe5d8bb6848e1cc295e9d4dd5ba375eeb67d823c009ad83387ac41dbad1a5}
+      - UPLOAD_SVC_PORT=8083
+      - MINIO_ENDPOINT=storage:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-streamvault}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-streamvault123}
+      - MINIO_USE_SSL=false
+      - MINIO_BUCKET=streamvault
+      - REDIS_ADDR=redis:6379
+      - FRONTEND_ORIGIN=${FRONTEND_ORIGIN:-http://localhost:3000}
+    ports:
+      - "8083:8083"
+
+  notify-svc:
+    build:
+      context: ../../backend
+      dockerfile: ../deploy/docker/notify-svc.Dockerfile
+    container_name: streamvault_notify_svc
+    depends_on:
+      - db
+      - redis
+    environment:
+      - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/streamvault?sslmode=disable
+      - JWT_SECRET=${JWT_SECRET:-15bbe5d8bb6848e1cc295e9d4dd5ba375eeb67d823c009ad83387ac41dbad1a5}
+      - INTERNAL_SECRET=${INTERNAL_SECRET:-eb5653fa0d69d0bb1853ace001f65680635b4ff554dd7fda57e7002e76202b48}
+      - NOTIFY_SVC_PORT=8084
+      - FRONTEND_ORIGIN=${FRONTEND_ORIGIN:-http://localhost:3000}
+      - REDIS_ADDR=redis:6379
+    ports:
+      - "8084:8084"
+
+  image-worker:
+    build:
+      context: ../../backend
+      dockerfile: ../deploy/docker/image-worker.Dockerfile
+    container_name: streamvault_image_worker
+    depends_on:
+      - db
+      - redis
+      - storage
+      - notify-svc
+    environment:
+      - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/streamvault?sslmode=disable
+      - MINIO_ENDPOINT=storage:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-streamvault}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-streamvault123}
+      - MINIO_USE_SSL=false
+      - MINIO_BUCKET=streamvault
+      - REDIS_ADDR=redis:6379
+      - IMAGE_WORKER_METRICS_PORT=9091
+      - IMAGE_WORKER_CONCURRENCY=5
+      - NOTIFY_SVC_URL=http://notify-svc:8084
+      - INTERNAL_SECRET=${INTERNAL_SECRET:-eb5653fa0d69d0bb1853ace001f65680635b4ff554dd7fda57e7002e76202b48}
+    ports:
+      - "9091:9091"
+
+  video-worker:
+    build:
+      context: ../../backend
+      dockerfile: ../deploy/docker/video-worker.Dockerfile
+    container_name: streamvault_video_worker
+    depends_on:
+      - db
+      - redis
+      - storage
+      - notify-svc
+    environment:
+      - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/streamvault?sslmode=disable
+      - MINIO_ENDPOINT=storage:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-streamvault}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-streamvault123}
+      - MINIO_USE_SSL=false
+      - MINIO_BUCKET=streamvault
+      - REDIS_ADDR=redis:6379
+      - VIDEO_WORKER_METRICS_PORT=9092
+      - VIDEO_WORKER_CONCURRENCY=2
+      - NOTIFY_SVC_URL=http://notify-svc:8084
+      - INTERNAL_SECRET=${INTERNAL_SECRET:-eb5653fa0d69d0bb1853ace001f65680635b4ff554dd7fda57e7002e76202b48}
+    ports:
+      - "9092:9092"
 
 volumes:
   streamvault_postgres_data:

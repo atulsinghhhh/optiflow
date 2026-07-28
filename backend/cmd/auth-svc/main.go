@@ -26,7 +26,7 @@ func main() {
 		log.Fatal().Err(err).Msg("loading config")
 	}
 
-	gormDB, err := db.Connect(cfg.DatabaseURL, &models.User{})
+	gormDB, err := db.Connect(cfg.DatabaseURL, &models.User{}, &models.PasswordResetToken{})
 	if err != nil {
 		log.Fatal().Err(err).Msg("connecting to database")
 	}
@@ -53,6 +53,8 @@ func main() {
 	r.Post("/signup", h.signup)
 	r.Post("/login", h.login)
 	r.Post("/refresh", h.refresh)
+	r.Post("/password-reset/request", h.requestPasswordReset)
+	r.Post("/password-reset/confirm", h.confirmPasswordReset)
 
 	r.Group(func(r chi.Router) {
 		r.Use(authmw.RequireAuth([]byte(cfg.JWTSecret)))

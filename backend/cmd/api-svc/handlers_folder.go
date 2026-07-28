@@ -147,7 +147,7 @@ func (h *handler) getFolder(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusInternalServerError, "could not load folder")
 		return
 	}
-	if err := h.db.Where("user_id = ? AND folder_id = ?", userID, id).Order("name").Find(&resp.Files).Error; err != nil {
+	if err := h.db.Where("user_id = ? AND folder_id = ? AND is_current = ?", userID, id, true).Order("name").Find(&resp.Files).Error; err != nil {
 		log.Error().Err(err).Msg("listing folder files")
 		httpx.WriteError(w, http.StatusInternalServerError, "could not load folder")
 		return
@@ -231,35 +231,78 @@ func (h *handler) deleteFolder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.deleteFolderRecursive(userID, id); err != nil {
+	versions, err := h.deleteFolderRecursive(userID, id)
+	if err != nil {
 		log.Error().Err(err).Msg("deleting folder")
 		httpx.WriteError(w, http.StatusInternalServerError, "could not delete folder")
 		return
 	}
 
+	for _, v := range versions {
+		h.cleanupFileObjects(r.Context(), v)
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// deleteFolderRecursive deletes a folder along with every descendant folder and
-// file, all within a single transaction so a partial failure can't leave orphans.
-func (h *handler) deleteFolderRecursive(userID, folderID uuid.UUID) error {
-	return h.db.Transaction(func(tx *gorm.DB) error {
-		return deleteFolderTree(tx, userID, folderID)
+// deleteFolderRecursive deletes a folder along with every descendant folder
+// and file (every version of each, not just the current one — otherwise old
+// versions would become orphans), all within a single transaction so a
+// partial failure can't leave the tree half-deleted. Returns every File row
+// removed so the caller can clean up their MinIO objects afterward.
+func (h *handler) deleteFolderRecursive(userID, folderID uuid.UUID) ([]models.File, error) {
+	var deleted []models.File
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		var err error
+		deleted, err = deleteFolderTree(tx, userID, folderID)
+		return err
 	})
+	return deleted, err
 }
 
-func deleteFolderTree(tx *gorm.DB, userID, folderID uuid.UUID) error {
+func deleteFolderTree(tx *gorm.DB, userID, folderID uuid.UUID) ([]models.File, error) {
 	var children []models.Folder
 	if err := tx.Where("user_id = ? AND parent_id = ?", userID, folderID).Find(&children).Error; err != nil {
-		return err
+		return nil, err
 	}
+
+	var deleted []models.File
 	for _, child := range children {
-		if err := deleteFolderTree(tx, userID, child.ID); err != nil {
-			return err
+		childDeleted, err := deleteFolderTree(tx, userID, child.ID)
+		if err != nil {
+			return nil, err
+		}
+		deleted = append(deleted, childDeleted...)
+	}
+
+	var currentFiles []models.File
+	if err := tx.Where("user_id = ? AND folder_id = ? AND is_current = ?", userID, folderID, true).Find(&currentFiles).Error; err != nil {
+		return nil, err
+	}
+
+	var fileIDs []uuid.UUID
+	for _, f := range currentFiles {
+		versions, err := lineageFiles(tx, userID, lineageRootID(f))
+		if err != nil {
+			return nil, err
+		}
+		deleted = append(deleted, versions...)
+		for _, v := range versions {
+			fileIDs = append(fileIDs, v.ID)
 		}
 	}
-	if err := tx.Where("user_id = ? AND folder_id = ?", userID, folderID).Delete(&models.File{}).Error; err != nil {
-		return err
+
+	if len(fileIDs) > 0 {
+		if err := tx.Where("file_id IN ? AND user_id = ?", fileIDs, userID).Delete(&models.Share{}).Error; err != nil {
+			return nil, err
+		}
+		if err := tx.Where("id IN ? AND user_id = ?", fileIDs, userID).Delete(&models.File{}).Error; err != nil {
+			return nil, err
+		}
 	}
-	return tx.Where("id = ? AND user_id = ?", folderID, userID).Delete(&models.Folder{}).Error
+
+	if err := tx.Where("id = ? AND user_id = ?", folderID, userID).Delete(&models.Folder{}).Error; err != nil {
+		return nil, err
+	}
+	return deleted, nil
 }

@@ -149,9 +149,10 @@ func (h *handler) refresh(w http.ResponseWriter, r *http.Request) {
 }
 
 type meResponse struct {
-	ID    uuid.UUID `json:"id"`
-	Email string    `json:"email"`
-	Name  string    `json:"name"`
+	ID                uuid.UUID `json:"id"`
+	Email             string    `json:"email"`
+	Name              string    `json:"name"`
+	StorageQuotaBytes int64     `json:"storage_quota_bytes"`
 }
 
 type updateMeRequest struct {
@@ -176,7 +177,7 @@ func (h *handler) getMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, meResponse{ID: user.ID, Email: user.Email, Name: user.Name})
+	httpx.WriteJSON(w, http.StatusOK, meResponse{ID: user.ID, Email: user.Email, Name: user.Name, StorageQuotaBytes: user.StorageQuotaBytes})
 }
 
 func (h *handler) updateMe(w http.ResponseWriter, r *http.Request) {
@@ -210,5 +211,5 @@ func (h *handler) updateMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, meResponse{ID: user.ID, Email: user.Email, Name: user.Name})
+	httpx.WriteJSON(w, http.StatusOK, meResponse{ID: user.ID, Email: user.Email, Name: user.Name, StorageQuotaBytes: user.StorageQuotaBytes})
 }

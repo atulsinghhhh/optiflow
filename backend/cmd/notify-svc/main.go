@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -10,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
@@ -32,9 +34,17 @@ func main() {
 		log.Fatal().Err(err).Msg("connecting to database")
 	}
 
+	rdb := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
+	defer rdb.Close()
+
+	hub := newHub(rdb)
+	subCtx, cancelSub := context.WithCancel(context.Background())
+	defer cancelSub()
+	go hub.subscribeLoop(subCtx)
+
 	h := &handler{
 		db:             gormDB,
-		hub:            newHub(),
+		hub:            hub,
 		jwtSecret:      []byte(cfg.JWTSecret),
 		internalSecret: cfg.InternalSecret,
 		originPattern:  originHost(cfg.FrontendOrigin),
@@ -82,6 +92,7 @@ type config struct {
 	JWTSecret      string
 	InternalSecret string
 	FrontendOrigin string
+	RedisAddr      string
 }
 
 func loadConfig() (config, error) {
@@ -110,12 +121,18 @@ func loadConfig() (config, error) {
 		frontendOrigin = "http://localhost:3000"
 	}
 
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		return config{}, fmt.Errorf("REDIS_ADDR is required")
+	}
+
 	return config{
 		Port:           port,
 		DatabaseURL:    dbURL,
 		JWTSecret:      secret,
 		InternalSecret: internalSecret,
 		FrontendOrigin: frontendOrigin,
+		RedisAddr:      redisAddr,
 	}, nil
 }
 

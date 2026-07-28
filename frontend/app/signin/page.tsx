@@ -135,6 +135,15 @@ const SignInPage = () => {
                                         className={inputCls}
                                     />
 
+                                    <div className="text-right">
+                                        <Link
+                                            href="/forgot-password"
+                                            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                                        >
+                                            Forgot password?
+                                        </Link>
+                                    </div>
+
                                     <motion.button
                                         type="submit"
                                         disabled={isLoading || !email || !password}

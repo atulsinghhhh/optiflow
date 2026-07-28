@@ -23,10 +23,38 @@ import (
 
 const presignExpiry = 15 * time.Minute
 
+var errQuotaExceeded = errors.New("storage quota exceeded")
+
 type handler struct {
 	db      *gorm.DB
 	storage *storage.Client
 	queue   *asynq.Client
+}
+
+// checkQuota rejects an upload before it's ever presigned if it would push
+// the user over their quota. This trusts the client's declared size_bytes —
+// good enough to stop honest-mistake overages at v1, but not adversarial-proof
+// (a client could lie and upload more than declared); closing that gap would
+// mean checking again in complete() and cleaning up the MinIO object on
+// rejection, which is a bigger change left for when quota enforcement needs
+// to be airtight (e.g. once quotas are tied to billing in v3).
+func (h *handler) checkQuota(userID uuid.UUID, incomingBytes int64) error {
+	var user models.User
+	if err := h.db.Select("storage_quota_bytes").Where("id = ?", userID).First(&user).Error; err != nil {
+		return fmt.Errorf("looking up user quota: %w", err)
+	}
+
+	var used int64
+	if err := h.db.Model(&models.File{}).Where("user_id = ?", userID).
+		Select("COALESCE(SUM(size_bytes), 0)").Scan(&used).Error; err != nil {
+		return fmt.Errorf("summing current storage usage: %w", err)
+	}
+
+	if used+incomingBytes > user.StorageQuotaBytes {
+		return fmt.Errorf("%w: %d of %d bytes used, this upload needs %d more",
+			errQuotaExceeded, used, user.StorageQuotaBytes, incomingBytes)
+	}
+	return nil
 }
 
 type presignRequest struct {
@@ -52,6 +80,16 @@ func (h *handler) presign(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Name == "" || req.SizeBytes <= 0 || req.MimeType == "" {
 		httpx.WriteError(w, http.StatusBadRequest, "name, size_bytes, and mime_type are required")
+		return
+	}
+
+	if err := h.checkQuota(userID, req.SizeBytes); err != nil {
+		if errors.Is(err, errQuotaExceeded) {
+			httpx.WriteError(w, http.StatusRequestEntityTooLarge, err.Error())
+			return
+		}
+		log.Error().Err(err).Msg("checking storage quota")
+		httpx.WriteError(w, http.StatusInternalServerError, "could not start upload")
 		return
 	}
 

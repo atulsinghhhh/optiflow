@@ -17,7 +17,9 @@ import {
     CartesianGrid,
 } from "recharts";
 
+import { Progress } from "@/components/ui/progress";
 import { useFileStats } from "@/lib/hooks/use-files";
+import { useMe } from "@/lib/hooks/use-me";
 import type { FileStatus } from "@/lib/api/files";
 
 const CHART_COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"];
@@ -41,6 +43,7 @@ export default function DashboardPage() {
     // Backed by api-svc's GET /files/stats, which aggregates across the whole
     // account (every folder), not just the root level.
     const { data: rawStats, isLoading } = useFileStats();
+    const { data: me } = useMe();
 
     const stats = useMemo(() => {
         const statusCounts = rawStats?.status_counts ?? {};
@@ -82,9 +85,21 @@ export default function DashboardPage() {
                         <CardTitle className="text-sm font-medium text-muted-foreground">Storage Used</CardTitle>
                         <HardDrive className="h-5 w-5 text-primary" />
                     </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold">{formatBytes(stats.totalBytes)}</div>
-                        <p className="text-xs text-muted-foreground mt-1">Quota isn&apos;t enforced yet</p>
+                    <CardContent className="space-y-2">
+                        <div className="flex items-end justify-between">
+                            <div className="text-3xl font-bold">{formatBytes(stats.totalBytes)}</div>
+                            <span className="text-xs text-muted-foreground font-medium">
+                                of {formatBytes(me?.storage_quota_bytes ?? 0)}
+                            </span>
+                        </div>
+                        <Progress
+                            value={
+                                me?.storage_quota_bytes
+                                    ? Math.min(100, (stats.totalBytes / me.storage_quota_bytes) * 100)
+                                    : 0
+                            }
+                            className="h-1.5"
+                        />
                     </CardContent>
                 </Card>
 

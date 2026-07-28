@@ -13,6 +13,8 @@ export type FileRecord = {
     thumbnail_key: string | null;
     playlist_key: string | null;
     version: number;
+    parent_id: string | null;
+    is_current: boolean;
     created_at: string;
     updated_at: string;
 };
@@ -55,5 +57,16 @@ export type FileStats = {
 // lists a single folder level at a time.
 export async function getFileStats(): Promise<FileStats> {
     const res = await apiClient.get<FileStats>("/files/stats");
+    return res.data;
+}
+
+// listFileVersions returns every version of a logical file, newest first.
+export async function listFileVersions(id: string): Promise<FileRecord[]> {
+    const res = await apiClient.get<FileRecord[]>(`/files/${id}/versions`);
+    return res.data;
+}
+
+export async function restoreFileVersion(id: string, versionId: string): Promise<FileRecord> {
+    const res = await apiClient.post<FileRecord>(`/files/${id}/versions/${versionId}/restore`);
     return res.data;
 }

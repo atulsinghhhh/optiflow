@@ -144,7 +144,12 @@ func (h *handler) internalNotify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.hub.push(r.Context(), req.UserID, n)
+	if err := h.hub.publish(r.Context(), req.UserID, n); err != nil {
+		// The notification is already persisted — a fan-out hiccup means
+		// connected clients miss the live push, not that the notification is
+		// lost; they'll still see it via GET /notifications.
+		log.Error().Err(err).Str("user_id", req.UserID.String()).Msg("publishing notification to redis")
+	}
 
 	httpx.WriteJSON(w, http.StatusCreated, n)
 }

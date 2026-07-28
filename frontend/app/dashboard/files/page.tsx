@@ -23,6 +23,7 @@ import {
     MoreHorizontal,
     Edit2,
     FileIcon,
+    History,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
@@ -32,6 +33,7 @@ import { NotificationsPopover } from "@/components/notifications-popover";
 import { UploadDialog } from "@/components/files/upload-dialog";
 import { ShareDialog } from "@/components/files/share-dialog";
 import { VideoPlayerDialog } from "@/components/files/video-player-dialog";
+import { VersionHistoryDialog } from "@/components/files/version-history-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -170,6 +172,7 @@ function FileManager() {
     const [deleteFileId, setDeleteFileId] = useState<string | null>(null);
     const [shareFile, setShareFile] = useState<{ id: string; name: string } | null>(null);
     const [playFile, setPlayFile] = useState<{ id: string; name: string } | null>(null);
+    const [versionsFile, setVersionsFile] = useState<{ id: string; name: string } | null>(null);
 
     const handleCreateFolder = () => {
         if (!newFolderName.trim()) return;
@@ -501,6 +504,9 @@ function FileManager() {
                                                 >
                                                     <Share2 size={14} /> Create Share Link
                                                 </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => setVersionsFile({ id: file.id, name: file.name })}>
+                                                    <History size={14} /> Version History
+                                                </DropdownMenuItem>
                                                 <DropdownMenuSeparator />
                                                 <DropdownMenuItem variant="destructive" onClick={() => setDeleteFileId(file.id)}>
                                                     <Trash2 size={14} /> Delete
@@ -663,6 +669,13 @@ function FileManager() {
                 onOpenChange={(open) => !open && setPlayFile(null)}
                 fileId={playFile?.id ?? null}
                 fileName={playFile?.name ?? ""}
+            />
+
+            <VersionHistoryDialog
+                open={!!versionsFile}
+                onOpenChange={(open) => !open && setVersionsFile(null)}
+                fileId={versionsFile?.id ?? null}
+                fileName={versionsFile?.name ?? ""}
             />
         </div>
     );
